@@ -9,6 +9,7 @@ edition = "2021"
 # Halo2
 halo2wrong = { git = "https://github.com/privacy-scaling-explorations/halo2wrong", version = "0.1.0", rev = "63bde545d934e69c806ef9bc8b18f03f6ec0fe8e" }
 maingate = { git = "https://github.com/privacy-scaling-explorations/halo2wrong", version = "0.1.0", rev = "63bde545d934e69c806ef9bc8b18f03f6ec0fe8e" }
+halo2curves = { git = 'https://github.com/privacy-scaling-explorations/halo2curves.git', tag = '0.3.2' }
 
 # Math
 num-bigint = { version = "0.4", features = ["rand"] }
@@ -16,3 +17,5 @@ num-bigint = { version = "0.4", features = ["rand"] }
 [dev-dependencies]
 rand = "0.8.5"
 rsa = "0.6.1"
+rand_core = {version = "0.6", default-features = false}
+paste = "1.0.7"

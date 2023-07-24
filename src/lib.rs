@@ -4,6 +4,9 @@ use big_integer::*;
 pub mod rsa;
 use rsa::*;
 
+pub mod poseidon;
+use poseidon::*;
+
 pub fn add(left: usize, right: usize) -> usize {
     left + right
 }
