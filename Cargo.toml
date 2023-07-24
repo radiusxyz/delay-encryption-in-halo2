@@ -1,0 +1,18 @@
+[package]
+name = "delay-encryption-in-halo2"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# Halo2
+halo2wrong = { git = "https://github.com/privacy-scaling-explorations/halo2wrong", version = "0.1.0", rev = "63bde545d934e69c806ef9bc8b18f03f6ec0fe8e" }
+maingate = { git = "https://github.com/privacy-scaling-explorations/halo2wrong", version = "0.1.0", rev = "63bde545d934e69c806ef9bc8b18f03f6ec0fe8e" }
+
+# Math
+num-bigint = { version = "0.4", features = ["rand"] }
+
+[dev-dependencies]
+rand = "0.8.5"
+rsa = "0.6.1"
