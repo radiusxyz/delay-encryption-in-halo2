@@ -4,13 +4,13 @@
 #![deny(missing_debug_implementations)]
 //-- #![deny(missing_docs)]
 
-mod grain;
-mod matrix;
-mod permutation;
-mod poseidon;
-mod spec;
+pub mod grain;
+pub mod matrix;
+pub mod permutation;
+pub mod poseidon;
+pub mod spec;
 
-mod gadget;
+pub mod gadget;
 pub use gadget::sinsemilla;
 
 pub use poseidon::Poseidon;
