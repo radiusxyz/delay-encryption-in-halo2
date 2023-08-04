@@ -1,0 +1,19 @@
+[package]
+name = "delay-encryption-in-halo2"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+halo2-base = { version = "0.2.2", default-features = false, features = [
+    "halo2-pse",
+    "display",
+], git = "https://github.com/axiom-crypto/halo2-lib.git", rev = "9860acc" }
+
+halo2-ecc = { version = "0.2.2", default-features = false, features = [
+    "halo2-pse",
+    "display",
+], git = "https://github.com/axiom-crypto/halo2-lib.git", rev = "9860acc" }
+num-traits = "0.2.15"
+
