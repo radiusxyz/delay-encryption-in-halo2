@@ -1,4 +1,4 @@
-use crate::{Spec, State};
+use crate::poseidon::spec::{Spec, State};
 use halo2curves::group::ff::{FromUniformBytes, PrimeField};
 
 /// Poseidon hasher that maintains state and inputs and yields single element

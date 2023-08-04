@@ -1,5 +1,4 @@
-//-- use crate::spec::MDSMatrix;
-use crate::poseidon::spec::MDSMatrix;
+use crate::spec::MDSMatrix;
 use halo2curves::group::ff::{FromUniformBytes, PrimeField};
 use std::marker::PhantomData;
 

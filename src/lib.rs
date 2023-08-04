@@ -7,7 +7,6 @@ use ff::Field;
 use maingate::{MainGate, RangeChip, MainGateInstructions, RangeInstructions};
 use poseidon::*;
 pub mod rsa;
-use poseidon::gadget::poseidon::Hash;
 use rsa::*;
 
 pub fn add(left: usize, right: usize) -> usize {
@@ -21,9 +20,6 @@ pub fn add(left: usize, right: usize) -> usize {
 //use halo2curves::group::ff::PrimeField; // zeroknight - Primefield is a trait.
 use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner, Value};
 use halo2_proofs::plonk::{Column, Advice, Instance, Circuit, Error};
-
-use poseidon::gadget::primitives::{Spec as Spec_trait, Mds, generate_constants, ConstantLength};
-use poseidon::gadget::pow5::{Pow5Config, Pow5Chip};
 
 use rsa::RSAConfig;
 
