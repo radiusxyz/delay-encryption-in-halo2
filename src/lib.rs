@@ -2,11 +2,13 @@ pub mod big_integer;
 use big_integer::*;
 
 
-pub mod poseidon;
-use ff::Field;
-use maingate::{MainGate, RangeChip, MainGateInstructions, RangeInstructions};
-use poseidon::*;
+pub mod hash;
+
+use ff::{Field, PrimeField};
+use halo2_gadgets::utilities::RangeConstrained;
+use hash::*;
 pub mod rsa;
+use hash::gadget::transcript::LimbRepresentation;
 use rsa::*;
 
 pub fn add(left: usize, right: usize) -> usize {
@@ -19,7 +21,7 @@ pub fn add(left: usize, right: usize) -> usize {
 // `ff::PrimeField` cannot be made into an objectrustcClick for full compiler diagnostic
 //use halo2curves::group::ff::PrimeField; // zeroknight - Primefield is a trait.
 use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner, Value};
-use halo2_proofs::plonk::{Column, Advice, Instance, Circuit, Error};
+use halo2_proofs::plonk::{Column, Advice, Instance, Circuit, Error, ConstraintSystem};
 
 use rsa::RSAConfig;
 
@@ -30,11 +32,25 @@ use halo2wrong::curves::pasta::Fp;
 use halo2wrong::curves::FieldExt;
 use halo2wrong::RegionCtx;
 
+use maingate::{MainGate, RangeChip, MainGateInstructions, RangeInstructions, MainGateConfig, RangeConfig};
+
+// This trait is the affine counterpart to Curve and is used for serialization, storage in memory, and inspection of $x$ and $y$ coordinates.
+use halo2_proofs::arithmetic::CurveAffine;
+
+use hash::spec::Spec;
+
+use ecc::{EccConfig, BaseFieldEccChip};
+use ecc::integer::rns::Rns;
+
+use crate::hash::gadget::transcript::TranscriptChip;
+
+const NUMBER_OF_LIMBS: usize = 4;
+const BIT_LEN_LIMB: usize = 68;
+
 //=== by zeroknight
+ // halo2wrong::curves::FieldExt : This trait is a common interface for dealing with elements of a finite field.
 #[derive(Debug, Clone)]
-struct DelayEncCircuit<F: FieldExt, S, const WIDTH: usize, const RATE: usize, const L: usize> 
-where
-    S: Spec_trait<Fp, WIDTH, RATE> + Clone + Copy,
+struct DelayEncCircuit<F: FieldExt, C: CurveAffine, const T: usize, const RATE: usize> 
 {
     // RSA
     signature: RSASignature<F>,
@@ -42,14 +58,18 @@ where
     msg: Vec<u8>,
 
     // Poseidon Hash
-    message: Value<[Fp; L]>,
-    _spec: PhantomData<S>,
+        // Spec holds construction parameters as well as constants that are used in permutation step. 
+            // Constants are planned to be hardcoded once transcript design matures. Number of partial rounds can be deriven from number of constants.
+        // type Scalar: PrimeField;
+    spec: Spec<C::Scalar, T, RATE>,
+    n : usize,
+    inputs: Value<Vec<C::Scalar>>,
+    expected: Value<C::Scalar>,
+
 }
 
 //
-impl<F: FieldExt, S, const WIDTH: usize, const RATE: usize, const L: usize> DelayEncCircuit<F, S, WIDTH, RATE, L> 
-    where 
-    S: Spec_trait<Fp, WIDTH, RATE> + Clone + Copy,
+impl<F: FieldExt, C: CurveAffine, const T: usize, const RATE: usize> DelayEncCircuit<F, C, T, RATE>
 {
     const BITS_LEN: usize = 2048;
     const LIMB_WIDTH: usize = RSAChip::<F>::LIMB_WIDTH;
@@ -64,36 +84,79 @@ impl<F: FieldExt, S, const WIDTH: usize, const RATE: usize, const L: usize> Dela
 
 
 #[derive(Debug, Clone)]
-struct DelayEncConfig< const WIDTH: usize, const RATE: usize, const L: usize>  {
+struct DelayEncConfig{
     // RSA
     rsa_config : RSAConfig,
 
-    // Poseidon
-    input: [Column<Advice>; L],
-    expected: Column<Instance>, // zeroknight : input - Advice, expected - Instance ??
-    poseidon_config : Pow5Config<Fp, WIDTH, RATE>,
+    // Poseidon Hash
+    main_gate_config : MainGateConfig,
+    range_config : RangeConfig,
+
 }
 
-impl<F: FieldExt, S, const WIDTH: usize, const RATE: usize, const L:usize> Circuit<Fp> 
-    for DelayEncCircuit<F, S, WIDTH, RATE, L>
-where
-    S: Spec_trait<Fp, WIDTH, RATE> + Clone + Copy,
+impl DelayEncConfig {
+
+    // Config for Ecc Chip
+    fn ecc_chip_config(&self) -> EccConfig {
+        // Returns new EccConfig given RangeConfig and MainGateConfig
+        EccConfig::new(self.range_config.clone(), self.main_gate_config.clone())
+    }
+
+    // halo2_proofs::plonk::circuit::ConstraintSystem<F> (F: Field)
+        // This is a description of the circuit environment, such as the gate, column and permutation arrangements
+    fn new<C: CurveAffine>(meta: &mut ConstraintSystem<C::Scalar>, rsa_config: RSAConfig) -> Self {
+        // Residue Numeral System Representation of an integer holding its values modulo several coprime integers.
+        //Contains all the necessary values to carry out operations such as multiplication and reduction in this representation.
+        let rns = Rns::<C::Base, C::Scalar, NUMBER_OF_LIMBS, BIT_LEN_LIMB>::construct();
+
+        let main_gate_config = MainGate::<C::Scalar>::configure(meta);
+        let overflow_bit_lens = rns.overflow_lengths(); //--
+        let composition_bit_lens = vec![BIT_LEN_LIMB/NUMBER_OF_LIMBS];
+
+        let range_config = RangeChip::<C::Scalar>::configure ( // (meta, main_gate_config, composition_bit_lens, overflow_bit_lens)
+            meta,
+            &main_gate_config,
+            composition_bit_lens,
+            overflow_bit_lens,
+        );
+
+        DelayEncConfig { 
+            rsa_config: rsa_config,
+            main_gate_config: main_gate_config, 
+            range_config: range_config,
+        }
+    }
+
+    fn config_range<N: PrimeField> (
+        &self,
+        layouter: &mut impl Layouter<N>,
+    ) -> Result<(), Error> {
+        let range_chip = RangeChip::<N>::new(self.range_config.clone());
+        range_chip.load_table(layouter)?;
+
+        Ok(())
+    }
+
+}
+
+
+// impl<F: FieldExt, C: CurveAffine, const T: usize, const RATE: usize> DelayEncCircuit<F, C, T, RATE>
+impl<F: FieldExt, C: CurveAffine, const T: usize, const RATE: usize> Circuit<C::Scalar> 
+    for DelayEncCircuit<F, C, T, RATE>
 {
-    type Config = DelayEncConfig<WIDTH, RATE, L>;
+    type Config = DelayEncConfig;
     type FloorPlanner = SimpleFloorPlanner;
 
     #[cfg(feature = "circuit-params")]
     type Params = ();
 
     fn without_witnesses(&self) -> Self {
-        Self {
-            message : Value::unknown(),
-            _spec : PhantomData,
-        }
+        //-- 
+        unimplemented!();
     }
-
+/*
     // zeroknight : setting up a table for Halo2
-    fn configure(meta: &mut halo2_proofs::plonk::ConstraintSystem<Fp>) -> Self::Config {
+    fn configure(meta: &mut ConstraintSystem<Fp>) -> Self::Config {
         // configure 'RSAConfig' : BigIntConfig (Rangeconfig and Maingate needed)
         let main_gate_config = MainGate::<Fp>::configure(meta);
         // Compute bit length parameters by calling 'RSAChip::<F>::compute_range_lens' function
@@ -112,43 +175,36 @@ where
         // configure RSAConfig : Creates new RSAConfig from BigIntConfig.
         let rsa_config = RSAConfig::new(bigint_config);
 
+        //== Poseidon Hash ==//
+    }
+*/
+    // zeroknight : setting up a table for Halo2
+    fn configure(meta: &mut ConstraintSystem<C::Scalar>) -> Self::Config {
+        // configure 'RSAConfig' : BigIntConfig (Rangeconfig and Maingate needed)
+        let main_gate_config = MainGate::<C::Scalar>::configure(meta);
+        // Compute bit length parameters by calling 'RSAChip::<F>::compute_range_lens' function
+        let (composition_bit_lens, overflow_bit_lens) = 
+            RSAChip::<Fp>::compute_range_lens(Self::BITS_LEN / Self::LIMB_WIDTH) ; // num_limbs = BITS_LEN / LIMB_WIDTH
+        // configure RangeChip and RangeConfig : Configures subset argument and returns the resuiting config
+        let range_config = RangeChip::<C::Scalar>::configure (   // (meta, main_gate_config, composition_bit_lens, overflow_bit_lens)
+            meta, 
+            &main_gate_config,
+            composition_bit_lens,
+            overflow_bit_lens,
+        );
+
+        // configure BigIntConfig : Creates new BigIntConfig from RangeConfig and MainGateConfig
+        let bigint_config = BigIntConfig::new(range_config.clone(), main_gate_config.clone());
+        // configure RSAConfig : Creates new RSAConfig from BigIntConfig.
+        let rsa_config = RSAConfig::new(bigint_config);
 
         //== Poseidon Hash ==//
-
-        // ConstraintSystem.advice_column : Allocate a new advice column at "FirstPhase?"
-        let state = (0..WIDTH).map(|_| meta.advice_column()).collect::<Vec<_>>();
-        // ConstraintSystem.instance_column : Allocate a new instance column
-        let expected = meta.instance_column();
-        // ConstraintSystem.enable_equality(-column-) : Enable the ability to enforce equality over cells in this column
-        meta.enable_equality(expected); // which columns should be equaled?!
-
-        let partial_sbox = meta.advice_column();
-
-        // ConstraintSystem.fixed_column : Allocate a new fixed column
-        let rc_a = (0..WIDTH).map(|_| meta.fixed_column()).collect::<Vec<_>>();
-        let rc_b = (0..WIDTH).map(|_| meta.fixed_column()).collect::<Vec<_>>();
-
-        // ConstraintSystem.enable_constant : Enables this fixed column to be used for global constant assignments.
-                                            // (Side-effects) The column will be equality-enabled.
-        meta.enable_constant(rc_b[0]);
-
-        // Config
-        Self::Config {
-            rsa_config,
-            input: state[..RATE].try_into().unwrap(),   // try_into
-            expected,
-            poseidon_config: Pow5Chip::configure::<S>( // (meta, state, partial_sbox, rc_a, rc_b),
-                meta,
-                state.try_into().unwrap(),
-                partial_sbox,
-                rc_a.try_into().unwrap(),
-                rc_b.try_into().unwrap(),
-            ),
-        }
+        let config = DelayEncConfig::new::<C>(meta, rsa_config);
+        config
     }
 
     // zeroknight : construct constraints. Assign values into cells in the table
-    fn synthesize(&self, config: Self::Config, layouter: impl Layouter<Fp>) -> Result<(), halo2_proofs::plonk::Error> {
+    fn synthesize(&self, config: Self::Config, layouter: impl Layouter<C::Scalar>) -> Result<(), halo2_proofs::plonk::Error> {  // zeroknight - use C::Scalar instead of Fp
 
         // RSA Chip!!
         let rsa_chip = self.rsa_chip(config.rsa_config);
@@ -253,73 +309,48 @@ where
         range_chip.load_table(&mut layouter)?;  // zeroknight : ??? : Load table in sythnesis time
         
 
-        //poseidon_config => pow5config
-        let chip = Pow5Chip::construct(config.poseidon_config.clone());
+        //poseidon_config
+        let main_gate = MainGate::<C::Scalar>::new(config.main_gate_config.clone());
+        let ecc_chip_config = config.ecc_chip_config();
+        // BaseFieldEccChip : Constaints elliptic curve operations such as assigment, addition and
+            /// multiplication. Elliptic curves constrained here is the same curve in the
+            /// proof system where base field is the non native field.
+        let ecc_chip = BaseFieldEccChip::<C, NUMBER_OF_LIMBS, BIT_LEN_LIMB>::new(ecc_chip_config);
 
-        // assign_region
-        /*
-            Assign a region of gates to an absolute row number.
+        layouter.assign_region(
+            || "region 0", 
+            |region| {
+                let offset = 0;
+                let ctx = &mut RegionCtx::new(region, offset);
 
-            Inside the closure, the chip may freely use relative offsets; the Layouter will treat these assignments as a single "region" within the circuit. Outside this closure, the Layouter is allowed to optimise as it sees fit.
+                // delay_encryption_in_halo2::hash::gadget::transcript::TranscriptChip
+                    // pub fn new(ctx: &mut RegionCtx<'_, N>, spec: &Spec<N, T, RATE>, ecc_chip: BaseFieldEccChip<C, NUMBER_OF_LIMBS, BIT_LEN>, _point_repr: E) -> Result<Self, Error>
 
-            fn assign_region(&mut self, || "region name", |region| {
-                let config = chip.config();
-                region.assign_advice(config.a, offset, || { Some(value)});
-            });
-        */
-        let message = layouter.assign_region(
-            || "load message", 
-            |mut region| {
-                let message_word = |i: usize| {
-                    let value = self.message.map(|message_vals| message_vals[i]);
-                    region.assign_advice ( //(annotation, column, offset, to)
-                        || format!("load message_{}", i),
-                        config.input[i],
-                        0,
-                        || value,
-                    )
-                };
+                let mut transcript_chip = 
+                    TranscriptChip::<_, _, _, NUMBER_OF_LIMBS, BIT_LEN_LIMB, T, RATE>::new(
+                        ctx,
+                        &self.spec,
+                        ecc_chip.clone(),
+                        LimbRepresentation::default(),
+                    )?;
+                // input : Value<Vec<C::Scalar>>
+                for e in self.inputs.as_ref().transpose_vec(self.n) {
+                    let e = main_gate.assign_value(ctx, e.map(|e| *e))?;
+                    transcript_chip.write_scalar(&e);
+                }
 
-                let message: Result<Vec<_>, Error> = (0..L).map(message_word).collect();
-                Ok(message?.try_into().unwrap())
+                let challenge = transcript_chip.squeeze(ctx)?;
+                let expected = main_gate.assign_value(ctx, self.expected)?;
+                main_gate.assert_equal(ctx, &challenge, &expected)?;
 
-            },
+                Ok(())
+            }
         )?;
 
-        // Poseidon Hasher
-        /*
-        pub struct Hash<F, PoseidonChip, S, D, const T: usize, const RATE: usize>
-            where
-                F: Field,
-                PoseidonChip: PoseidonSpongeInstructions<F, S, D, T, RATE>,
-                S: Spec<F, T, RATE>,
-                D: Domain<F, RATE>,
-            A Poseidon hash function, built around a sponge.
-        */
-        let hasher = Hash::<_, _, S, ConstantLength<L>, WIDTH, RATE>::init( //(chip, layouter)
-            chip,
-            layouter.namespace(|| "init"),
-        )?;
-        /*
-        pub fn hash(self, layouter: impl Layouter<F>, message: [AssignedCell<F, F>; L]) -> Result<AssignedCell<F, F>, Error>
-        => Hashes the given input.
-         */
-        let output = hasher.hash (  //(layouter, message)
-            // Layouter.namespace : Enters into a namespace. -> return namespaced_Layouter
-            layouter.namespace(|| "hash"),
-            message
-        )?;
+        config.config_range(&mut layouter)?;
 
-        /*
-        pub fn constrain_instance(&mut self, cell: Cell, column: Column<Instance>, row: usize) -> Result<(), Error>
-        => Constrains a Cell to equal an instance column's row value at an absolute position. 
-        */
 
-        layouter.constrain_instance (   // (cell, column, row)
-            output.cell(),
-            config.expected,
-            0
-        )
+        Ok(())
     }
 
 
@@ -331,6 +362,7 @@ fn test_delay_encryption() {
 
 }
 
+/*
 #[derive(Debug, Clone, Copy)]
 struct MySpec<const WIDTH: usize, const RATE: usize>;
 
@@ -380,11 +412,7 @@ fn bench_delayencryption<S, const WIDTH: usize, const RATE: usize, const L: usiz
     // Initialize the proving key
     // Creat a proof
 }
-
-
-
-
-//===
+*/
 
 
 

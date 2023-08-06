@@ -3,3 +3,5 @@ pub mod grain;
 pub mod matrix;
 pub mod permutation;
 pub mod poseidon;
+
+pub mod gadget;

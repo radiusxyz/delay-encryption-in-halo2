@@ -1,4 +1,4 @@
-use crate::poseidon::spec::{Spec, State};
+use crate::hash::spec::{Spec, State};
 use halo2curves::group::ff::{FromUniformBytes, PrimeField};
 
 /// Poseidon hasher that maintains state and inputs and yields single element
@@ -71,7 +71,8 @@ impl<F: FromUniformBytes<64>, const T: usize, const RATE: usize> Poseidon<F, T, 
 
 #[cfg(test)]
 mod tests {
-    use crate::{Poseidon, State};
+    use crate::hash::spec::State;
+    use crate::hash::poseidon::Poseidon;
     use halo2curves::bn256::Fr;
     use halo2curves::group::ff::Field;
     use paste::paste;
