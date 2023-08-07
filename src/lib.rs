@@ -4,7 +4,8 @@ use big_integer::*;
 
 pub mod hash;
 
-use ff::{Field, PrimeField};
+//use ff::{Field, PrimeField};
+
 use halo2_gadgets::utilities::RangeConstrained;
 use hash::*;
 pub mod rsa;
@@ -23,13 +24,15 @@ pub fn add(left: usize, right: usize) -> usize {
 use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner, Value};
 use halo2_proofs::plonk::{Column, Advice, Instance, Circuit, Error, ConstraintSystem};
 
+use halo2_proofs::halo2curves::ff::PrimeField;
+
 use rsa::RSAConfig;
 
 use std::marker::PhantomData;
 
 // zeroknight : Curve-related.. sortof conflict : halo2_proofs vs halo2wrong
 use halo2wrong::curves::pasta::Fp;
-use halo2wrong::curves::FieldExt;
+// use halo2wrong::curves::FieldExt;
 use halo2wrong::RegionCtx;
 
 use maingate::{MainGate, RangeChip, MainGateInstructions, RangeInstructions, MainGateConfig, RangeConfig};
@@ -50,11 +53,11 @@ const BIT_LEN_LIMB: usize = 68;
 //=== by zeroknight
  // halo2wrong::curves::FieldExt : This trait is a common interface for dealing with elements of a finite field.
 #[derive(Debug, Clone)]
-struct DelayEncCircuit<F: FieldExt, C: CurveAffine, const T: usize, const RATE: usize> 
+struct DelayEncCircuit<C: CurveAffine, const T: usize, const RATE: usize> 
 {
     // RSA
-    signature: RSASignature<F>,
-    public_key: RSAPublicKey<F>,
+    signature: RSASignature<C>, //-- zeroknight use C::Scalar instead of FieldExt
+    public_key: RSAPublicKey<C>,
     msg: Vec<u8>,
 
     // Poseidon Hash
@@ -69,14 +72,14 @@ struct DelayEncCircuit<F: FieldExt, C: CurveAffine, const T: usize, const RATE: 
 }
 
 //
-impl<F: FieldExt, C: CurveAffine, const T: usize, const RATE: usize> DelayEncCircuit<F, C, T, RATE>
+impl<C: CurveAffine, const T: usize, const RATE: usize> DelayEncCircuit<C, T, RATE>
 {
     const BITS_LEN: usize = 2048;
-    const LIMB_WIDTH: usize = RSAChip::<F>::LIMB_WIDTH;
+    const LIMB_WIDTH: usize = RSAChip::<C::Scalar>::LIMB_WIDTH;
     const EXP_LIMB_BITS: usize = 5;
 
     //
-    fn rsa_chip(&self, config: RSAConfig) -> RSAChip<F> {
+    fn rsa_chip(&self, config: RSAConfig) -> RSAChip<C> {
         // Create a new RSAChip from the configuration and parameters.
         RSAChip::new(config, Self::BITS_LEN, Self::EXP_LIMB_BITS)
     }
@@ -141,8 +144,8 @@ impl DelayEncConfig {
 
 
 // impl<F: FieldExt, C: CurveAffine, const T: usize, const RATE: usize> DelayEncCircuit<F, C, T, RATE>
-impl<F: FieldExt, C: CurveAffine, const T: usize, const RATE: usize> Circuit<C::Scalar> 
-    for DelayEncCircuit<F, C, T, RATE>
+impl<C: CurveAffine, const T: usize, const RATE: usize> Circuit<C::Scalar> 
+    for DelayEncCircuit<C, T, RATE>
 {
     type Config = DelayEncConfig;
     type FloorPlanner = SimpleFloorPlanner;
@@ -273,7 +276,7 @@ impl<F: FieldExt, C: CurveAffine, const T: usize, const RATE: usize> Circuit<C::
         }
 
         // Expose the resulting hash as public input
-        let num_limb_n = Self::BITS_LEN / RSAChip::<F>::LIMB_WIDTH;
+        let num_limb_n = Self::BITS_LEN / RSAChip::<C::Scalar>::LIMB_WIDTH;
         for (i, val) in hashed_msg.into_iter().enumerate() {
             main_gate.expose_public ( // (layouter, value, row)
                 layouter.namespace(|| format!("expose {}th hashed msg limb",i )),

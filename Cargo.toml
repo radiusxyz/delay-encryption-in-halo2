@@ -7,17 +7,17 @@ edition = "2021"
 
 [dependencies]
 # Halo2
-halo2wrong = { git = "https://github.com/privacy-scaling-explorations/halo2wrong", version = "0.1.0", rev = "63bde545d934e69c806ef9bc8b18f03f6ec0fe8e" }
-maingate = { git = "https://github.com/privacy-scaling-explorations/halo2wrong", version = "0.1.0", rev = "63bde545d934e69c806ef9bc8b18f03f6ec0fe8e" }
+halo2wrong = { git = "https://github.com/privacy-scaling-explorations/halo2wrong" } #, tag = 'v2023_02_02' } # version = "0.1.0", rev = "63bde545d934e69c806ef9bc8b18f03f6ec0fe8e" }
+maingate = { git = "https://github.com/privacy-scaling-explorations/halo2wrong" } #, tag = 'v2023_02_02'} # version = "0.1.0", rev = "63bde545d934e69c806ef9bc8b18f03f6ec0fe8e" }
 halo2curves = { git = 'https://github.com/privacy-scaling-explorations/halo2curves.git', tag = '0.3.2' }
 halo2_proofs = { version = "0.2.0", git = "https://github.com/privacy-scaling-explorations/halo2" }
 
 halo2_gadgets = {version = "0.2.0", git = "https://github.com/privacy-scaling-explorations/halo2", features = ["dev-graph", "test-dependencies"]}
 
-ecc = { git = "https://github.com/privacy-scaling-explorations/halo2wrong", version = "0.1.0", rev = "63bde545d934e69c806ef9bc8b18f03f6ec0fe8e" }
+ecc = { git = "https://github.com/privacy-scaling-explorations/halo2wrong", tag = 'v2023_02_02'} # version = "0.1.0", rev = "63bde545d934e69c806ef9bc8b18f03f6ec0fe8e" }
 
 
-ff = { version = "0.13", features = ["bits"] }
+#ff = { version = "0.13", features = ["bits"] }
 group = "0.13"
 subtle = "2.3"  #sinsemilla - primitives
 bitvec = "1" #poseidon - gadget - primitives - grain

@@ -13,7 +13,11 @@ use crate::big_integer::*;
 mod chip;
 mod instructions;
 pub use chip::*;
-use halo2wrong::halo2::{arithmetic::FieldExt, circuit::Value, plonk::Error};
+// zeroknight - FieldExt has been removed
+//use halo2wrong::halo2::{arithmetic::FieldExt, circuit::Value, plonk::Error};
+use halo2wrong::halo2::{circuit::Value, plonk::Error};
+use halo2_proofs::arithmetic::CurveAffine;
+
 pub use instructions::*;
 use maingate::{
     big_to_fe, decompose_big, fe_to_big, AssignedValue, MainGate, MainGateConfig,
@@ -23,32 +27,32 @@ use num_bigint::BigUint;
 
 /// A parameter `e` in the RSA public key that is about to be assigned.
 #[derive(Clone, Debug)]
-pub enum RSAPubE<F: FieldExt> {
+pub enum RSAPubE<C: CurveAffine> { // zeroknight : CurveAffine instead of F: FieldExt
     /// A variable parameter `e`.
-    Var(UnassignedInteger<F>),
+    Var(UnassignedInteger<C>),
     /// A fixed parameter `e`.
     Fix(BigUint),
 }
 
 /// A parameter `e` in the assigned RSA public key.
 #[derive(Clone, Debug)]
-pub enum AssignedRSAPubE<F: FieldExt> {
+pub enum AssignedRSAPubE<C: CurveAffine> {
     /// A variable parameter `e`.
-    Var(AssignedInteger<F, Fresh>),
+    Var(AssignedInteger<C, Fresh>),
     /// A fixed parameter `e`.
     Fix(BigUint),
 }
 
 /// RSA public key that is about to be assigned.
 #[derive(Clone, Debug)]
-pub struct RSAPublicKey<F: FieldExt> {
+pub struct RSAPublicKey<C: CurveAffine> {
     /// a modulus parameter
-    pub n: UnassignedInteger<F>,
+    pub n: UnassignedInteger<C>,
     /// an exponent parameter
-    pub e: RSAPubE<F>,
+    pub e: RSAPubE<C>,
 }
 
-impl<F: FieldExt> RSAPublicKey<F> {
+impl<C: CurveAffine> RSAPublicKey<C> {
     /// Creates new [`RSAPublicKey`] from `n` and `e`.
     ///
     /// # Arguments
@@ -57,7 +61,7 @@ impl<F: FieldExt> RSAPublicKey<F> {
     ///
     /// # Return values
     /// Returns new [`RSAPublicKey`].
-    pub fn new(n: UnassignedInteger<F>, e: RSAPubE<F>) -> Self {
+    pub fn new(n: UnassignedInteger<C>, e: RSAPubE<C>) -> Self {
         Self { n, e }
     }
 
@@ -66,21 +70,21 @@ impl<F: FieldExt> RSAPublicKey<F> {
             value: Value::unknown(),
             num_limbs,
         };
-        let e = RSAPubE::<F>::Fix(fix_e);
+        let e = RSAPubE::<C>::Fix(fix_e);
         Self { n, e }
     }
 }
 
 /// An assigned RSA public key.
 #[derive(Clone, Debug)]
-pub struct AssignedRSAPublicKey<F: FieldExt> {
+pub struct AssignedRSAPublicKey<C: CurveAffine> {
     /// a modulus parameter
-    pub n: AssignedInteger<F, Fresh>,
+    pub n: AssignedInteger<C, Fresh>,
     /// an exponent parameter
-    pub e: AssignedRSAPubE<F>,
+    pub e: AssignedRSAPubE<C>,
 }
 
-impl<F: FieldExt> AssignedRSAPublicKey<F> {
+impl<C: CurveAffine> AssignedRSAPublicKey<C> {
     /// Creates new [`AssignedRSAPublicKey`] from assigned `n` and `e`.
     ///
     /// # Arguments
@@ -89,18 +93,18 @@ impl<F: FieldExt> AssignedRSAPublicKey<F> {
     ///
     /// # Return values
     /// Returns new [`AssignedRSAPublicKey`].
-    pub fn new(n: AssignedInteger<F, Fresh>, e: AssignedRSAPubE<F>) -> Self {
+    pub fn new(n: AssignedInteger<C, Fresh>, e: AssignedRSAPubE<C>) -> Self {
         Self { n, e }
     }
 }
 
 /// RSA signature that is about to be assigned.
 #[derive(Clone, Debug)]
-pub struct RSASignature<F: FieldExt> {
-    c: UnassignedInteger<F>,
+pub struct RSASignature<C: CurveAffine> {
+    c: UnassignedInteger<C>,
 }
 
-impl<F: FieldExt> RSASignature<F> {
+impl<C: CurveAffine> RSASignature<C> {
     /// Creates new [`RSASignature`] from its integer.
     ///
     /// # Arguments
@@ -108,7 +112,7 @@ impl<F: FieldExt> RSASignature<F> {
     ///
     /// # Return values
     /// Returns new [`RSASignature`].
-    pub fn new(c: UnassignedInteger<F>) -> Self {
+    pub fn new(c: UnassignedInteger<C>) -> Self {
         Self { c }
     }
 
@@ -123,11 +127,11 @@ impl<F: FieldExt> RSASignature<F> {
 
 /// An assigned RSA signature.
 #[derive(Clone, Debug)]
-pub struct AssignedRSASignature<F: FieldExt> {
-    c: AssignedInteger<F, Fresh>,
+pub struct AssignedRSASignature<C: CurveAffine> {
+    c: AssignedInteger<C, Fresh>,
 }
 
-impl<F: FieldExt> AssignedRSASignature<F> {
+impl<C: CurveAffine> AssignedRSASignature<C> {
     /// Creates new [`AssignedRSASignature`] from its assigned integer.
     ///
     /// # Arguments
@@ -135,7 +139,7 @@ impl<F: FieldExt> AssignedRSASignature<F> {
     ///
     /// # Return values
     /// Returns new [`AssignedRSASignature`].
-    pub fn new(c: AssignedInteger<F, Fresh>) -> Self {
+    pub fn new(c: AssignedInteger<C, Fresh>) -> Self {
         Self { c }
     }
 }
@@ -149,12 +153,12 @@ use halo2wrong::halo2::circuit::Layouter;
 
 /// A circuit implementation to verify pkcs1v15 signatures.
 #[derive(Clone, Debug)]
-pub struct RSASignatureVerifier<F: FieldExt> {
-    rsa_chip: RSAChip<F>,
+pub struct RSASignatureVerifier<C: CurveAffine> {
+    rsa_chip: RSAChip<C>,
     //-- sha256_chip: Sha256Chip<F>,
 }
 
-impl<F: FieldExt> RSASignatureVerifier<F> {
+impl<C: CurveAffine> RSASignatureVerifier<C> {
     /// Creates new [`RSASignatureVerifier`] from [`RSAChip`] and [`Sha256BitChip`].
     ///
     /// # Arguments
@@ -164,7 +168,7 @@ impl<F: FieldExt> RSASignatureVerifier<F> {
     /// # Return values
     /// Returns new [`RSASignatureVerifier`].
     //-- pub fn new(rsa_chip: RSAChip<F>, sha256_chip: Sha256Chip<F>) -> Self {
-    pub fn new(rsa_chip: RSAChip<F>) -> Self {
+    pub fn new(rsa_chip: RSAChip<C>) -> Self {
         Self {
             rsa_chip,
             //-- sha256_chip,
@@ -185,11 +189,11 @@ impl<F: FieldExt> RSASignatureVerifier<F> {
     /// Otherwise, the bit is equivalent to zero.
     pub fn verify_pkcs1v15_signature(
         &self,
-        mut layouter: impl Layouter<F>,
-        public_key: &AssignedRSAPublicKey<F>,
+        mut layouter: impl Layouter<C::Scalar>,
+        public_key: &AssignedRSAPublicKey<C>,
         msg: &[u8],
-        signature: &AssignedRSASignature<F>,
-    ) -> Result<(AssignedValue<F>, Vec<AssignedValue<F>>), Error> {
+        signature: &AssignedRSASignature<C>,
+    ) -> Result<(AssignedValue<C::Scalar>, Vec<AssignedValue<C::Scalar>>), Error> {
         // 1. Compute the SHA256 hash of the input bytes.
         /*let input_byte_size_with_9 = msg.len() + 9;
         let one_round_size = 4 * 16;
@@ -218,7 +222,7 @@ impl<F: FieldExt> RSASignatureVerifier<F> {
         hashed_bytes.reverse();
         */
 
-        let limb_bytes = RSAChip::<F>::LIMB_WIDTH / 8;
+        let limb_bytes = RSAChip::<C>::LIMB_WIDTH / 8;
         let rsa_chip = self.rsa_chip.clone();
         let main_gate = rsa_chip.main_gate();
         // by zeroknight
@@ -235,9 +239,9 @@ impl<F: FieldExt> RSASignatureVerifier<F> {
                     .map(|val| {
                         main_gate.assign_value(
                             ctx, 
-                            val.map(|v| F::from_u128(v as u128)))
+                            val.map(|v| C::from_u128(v as u128)))
                     })
-                    .collect::<Result<Vec<AssignedValue<F>>, Error>>()
+                    .collect::<Result<Vec<AssignedValue<C>>, Error>>()
             }
         )?;  
         //let hashed_bytes = msg.clone(); // expected reference `&AssignedCell<F, F>`, found reference `&u8`
@@ -252,7 +256,7 @@ impl<F: FieldExt> RSASignatureVerifier<F> {
                 let ctx = &mut RegionCtx::new(region, offset);
                 let mut assigned_limbs = Vec::with_capacity(bytes_len / limb_bytes);
                 for i in 0..(bytes_len / limb_bytes) {
-                    let mut limb_val = main_gate.assign_constant(ctx, F::zero())?;
+                    let mut limb_val = main_gate.assign_constant(ctx, C::zero())?;
                     for j in 0..limb_bytes {
                         let coeff = main_gate
                             .assign_constant(ctx, big_to_fe(BigUint::from(1usize) << (8 * j)))?;
@@ -300,19 +304,19 @@ mod test {
                 //-- sha256_config: Sha256Config
             }
 
-            struct $circuit_name<F: FieldExt> {
+            struct $circuit_name<C: CurveAffine> {
                 private_key: RsaPrivateKey,
                 public_key: RsaPublicKey,
                 msg: Vec<u8>,
-                _f: PhantomData<F>
+                _f: PhantomData<C>
             }
 
-            impl<F: FieldExt> $circuit_name<F> {
+            impl<C: CurveAffine> $circuit_name<C> {
                 const BITS_LEN:usize = $bits_len;
-                const LIMB_WIDTH:usize = RSAChip::<F>::LIMB_WIDTH;
+                const LIMB_WIDTH:usize = RSAChip::<C>::LIMB_WIDTH;
                 const EXP_LIMB_BITS:usize = 5;
                 const DEFAULT_E: u128 = 65537;
-                fn rsa_chip(&self, config: RSAConfig) -> RSAChip<F> {
+                fn rsa_chip(&self, config: RSAConfig) -> RSAChip<C> {
                     RSAChip::new(config, Self::BITS_LEN,Self::EXP_LIMB_BITS)
                 }
 
@@ -321,7 +325,7 @@ mod test {
                 //--}
             }
 
-            impl<F: FieldExt> Circuit<F> for $circuit_name<F> {
+            impl<C: CurveAffine> Circuit<C::Scalar> for $circuit_name<C> {
                 type Config = $config_name;
                 type FloorPlanner = SimpleFloorPlanner;
 
@@ -329,10 +333,10 @@ mod test {
                     unimplemented!();
                 }
 
-                fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
-                    let main_gate_config = MainGate::<F>::configure(meta);
+                fn configure(meta: &mut ConstraintSystem<C::Scalar>) -> Self::Config {
+                    let main_gate_config = MainGate::<C>::configure(meta);
                     let (mut composition_bit_lens, mut overflow_bit_lens) =
-                        RSAChip::<F>::compute_range_lens(
+                        RSAChip::<C>::compute_range_lens(
                             Self::BITS_LEN / Self::LIMB_WIDTH,
                         );
                     
@@ -340,7 +344,7 @@ mod test {
                     //-- .append(&mut sha_composition_bit_lens);
                     //-- overflow_bit_lenscomposition_bit_lens.append(&mut sha_overflow_bit_lens);
                     
-                    let range_config = RangeChip::<F>::configure(
+                    let range_config = RangeChip::<C>::configure(
                         meta,
                         &main_gate_config,
                         composition_bit_lens,
@@ -364,9 +368,9 @@ mod test {
             #[test]
             fn $test_fn_name() {
                 use halo2wrong::halo2::dev::MockProver;
-                fn run<F: FieldExt>() {
+                fn run<C: CurveAffine>() {
                     let mut rng = thread_rng();
-                    let private_key = RsaPrivateKey::new(&mut rng, $circuit_name::<F>::BITS_LEN).expect("failed to generate a key");
+                    let private_key = RsaPrivateKey::new(&mut rng, $circuit_name::<C>::BITS_LEN).expect("failed to generate a key");
                     let public_key = RsaPublicKey::from(&private_key);
                     let n = BigUint::from_radix_le(&public_key.n().to_radix_le(16),16).unwrap();
                     let mut msg:[u8;128] = [0;128];
@@ -376,16 +380,16 @@ mod test {
                     //-- let hashed_msg = Sha256::digest(&msg);
                     let hashed_msg = msg.clone();
 
-                    let circuit = $circuit_name::<F> {
+                    let circuit = $circuit_name::<C> {
                         private_key,
                         public_key,
                         msg: msg.to_vec(),
                         _f: PhantomData
                     };
-                    let num_limbs = $circuit_name::<F>::BITS_LEN / $circuit_name::<F>::LIMB_WIDTH;
-                    let limb_width = $circuit_name::<F>::LIMB_WIDTH;
-                    let n_fes = decompose_big::<F>(n, num_limbs, limb_width);
-                    let mut hash_fes = hashed_msg.iter().map(|byte| F::from(*byte as u64)).collect::<Vec<F>>();
+                    let num_limbs = $circuit_name::<C>::BITS_LEN / $circuit_name::<C>::LIMB_WIDTH;
+                    let limb_width = $circuit_name::<C>::LIMB_WIDTH;
+                    let n_fes = decompose_big::<C>(n, num_limbs, limb_width);
+                    let mut hash_fes = hashed_msg.iter().map(|byte| C::from(*byte as u64)).collect::<Vec<C>>();
                     let mut column0_public_inputs = n_fes;
                     column0_public_inputs.append(&mut hash_fes);
                     let public_inputs = vec![column0_public_inputs];
@@ -414,7 +418,7 @@ mod test {
         fn synthesize(
             &self,
             config: Self::Config,
-            mut layouter: impl halo2wrong::halo2::circuit::Layouter<F>,
+            mut layouter: impl halo2wrong::halo2::circuit::Layouter<C::Scalar>,
         ) -> Result<(), Error> {
             let rsa_chip = self.rsa_chip(config.rsa_config);
             //-- let sha256_chip = self.sha256_chip(config.sha256_config);
@@ -440,14 +444,14 @@ mod test {
                         .expect("fail to sign a hashed message.");
                     sign.reverse();
                     let sign_big = BigUint::from_bytes_le(&sign);
-                    let sign_limbs = decompose_big::<F>(sign_big.clone(), num_limbs, limb_width);
+                    let sign_limbs = decompose_big::<C>(sign_big.clone(), num_limbs, limb_width);
                     let sign_unassigned = UnassignedInteger::from(sign_limbs);
                     let sign = RSASignature::new(sign_unassigned);
                     let sign = rsa_chip.assign_signature(ctx, sign)?;
                     let n_big =
                         BigUint::from_radix_le(&self.public_key.n().clone().to_radix_le(16), 16)
                             .unwrap();
-                    let n_limbs = decompose_big::<F>(n_big.clone(), num_limbs, limb_width);
+                    let n_limbs = decompose_big::<C>(n_big.clone(), num_limbs, limb_width);
                     let n_unassigned = UnassignedInteger::from(n_limbs);
                     let e_fix = RSAPubE::Fix(BigUint::from(Self::DEFAULT_E));
                     let public_key = RSAPublicKey::new(n_unassigned, e_fix);
@@ -503,7 +507,7 @@ mod test {
         fn synthesize(
             &self,
             config: Self::Config,
-            mut layouter: impl halo2wrong::halo2::circuit::Layouter<F>,
+            mut layouter: impl halo2wrong::halo2::circuit::Layouter<C::Scalar>,
         ) -> Result<(), Error> {
             let rsa_chip = self.rsa_chip(config.rsa_config);
             //-- let sha256_chip = self.sha256_chip(config.sha256_config);
@@ -531,14 +535,14 @@ mod test {
                         .expect("fail to sign a hashed message.");
                     sign.reverse();
                     let sign_big = BigUint::from_bytes_le(&sign);
-                    let sign_limbs = decompose_big::<F>(sign_big.clone(), num_limbs, limb_width);
+                    let sign_limbs = decompose_big::<C>(sign_big.clone(), num_limbs, limb_width);
                     let sign_unassigned = UnassignedInteger::from(sign_limbs);
                     let sign = RSASignature::new(sign_unassigned);
                     let sign = rsa_chip.assign_signature(ctx, sign)?;
                     let n_big =
                         BigUint::from_radix_le(&self.public_key.n().clone().to_radix_le(16), 16)
                             .unwrap();
-                    let n_limbs = decompose_big::<F>(n_big.clone(), num_limbs, limb_width);
+                    let n_limbs = decompose_big::<C>(n_big.clone(), num_limbs, limb_width);
                     let n_unassigned = UnassignedInteger::from(n_limbs);
                     let e_fix = RSAPubE::Fix(BigUint::from(Self::DEFAULT_E));
                     let public_key = RSAPublicKey::new(n_unassigned, e_fix);
@@ -592,7 +596,7 @@ mod test {
         fn synthesize(
             &self,
             config: Self::Config,
-            mut layouter: impl halo2wrong::halo2::circuit::Layouter<F>,
+            mut layouter: impl halo2wrong::halo2::circuit::Layouter<C::Scalar>,
         ) -> Result<(), Error> {
             let rsa_chip = self.rsa_chip(config.rsa_config);
             //-- let sha256_chip = self.sha256_chip(config.sha256_config);
@@ -619,14 +623,14 @@ mod test {
                         .expect("fail to sign a hashed message.");
                     sign.reverse();
                     let sign_big = BigUint::from_bytes_le(&sign);
-                    let sign_limbs = decompose_big::<F>(sign_big.clone(), num_limbs, limb_width);
+                    let sign_limbs = decompose_big::<C>(sign_big.clone(), num_limbs, limb_width);
                     let sign_unassigned = UnassignedInteger::from(sign_limbs);
                     let sign = RSASignature::new(sign_unassigned);
                     let sign = rsa_chip.assign_signature(ctx, sign)?;
                     let n_big =
                         BigUint::from_radix_le(&self.public_key.n().clone().to_radix_le(16), 16)
                             .unwrap();
-                    let n_limbs = decompose_big::<F>(n_big.clone(), num_limbs, limb_width);
+                    let n_limbs = decompose_big::<C>(n_big.clone(), num_limbs, limb_width);
                     let n_unassigned = UnassignedInteger::from(n_limbs);
                     let e_fix = RSAPubE::Fix(BigUint::from(Self::DEFAULT_E));
                     let public_key = RSAPublicKey::new(n_unassigned, e_fix);
@@ -682,7 +686,7 @@ mod test {
         fn synthesize(
             &self,
             config: Self::Config,
-            mut layouter: impl halo2wrong::halo2::circuit::Layouter<F>,
+            mut layouter: impl halo2wrong::halo2::circuit::Layouter<C::Scalar>,
         ) -> Result<(), Error> {
             let rsa_chip = self.rsa_chip(config.rsa_config);
             //-- let sha256_chip = self.sha256_chip(config.sha256_config);
@@ -705,14 +709,14 @@ mod test {
                         .expect("fail to sign a hashed message.");
                     sign.reverse();
                     let sign_big = BigUint::from_bytes_le(&sign);
-                    let sign_limbs = decompose_big::<F>(sign_big.clone(), num_limbs, limb_width);
+                    let sign_limbs = decompose_big::<C>(sign_big.clone(), num_limbs, limb_width);
                     let sign_unassigned = UnassignedInteger::from(sign_limbs);
                     let sign = RSASignature::new(sign_unassigned);
                     let sign = rsa_chip.assign_signature(ctx, sign)?;
                     let n_big =
                         BigUint::from_radix_le(&self.public_key.n().clone().to_radix_le(16), 16)
                             .unwrap();
-                    let n_limbs = decompose_big::<F>(n_big.clone(), num_limbs, limb_width);
+                    let n_limbs = decompose_big::<C>(n_big.clone(), num_limbs, limb_width);
                     let n_unassigned = UnassignedInteger::from(n_limbs);
                     let e_fix = RSAPubE::Fix(BigUint::from(Self::DEFAULT_E));
                     let public_key = RSAPublicKey::new(n_unassigned, e_fix);
@@ -768,7 +772,7 @@ mod test {
         fn synthesize(
             &self,
             config: Self::Config,
-            mut layouter: impl halo2wrong::halo2::circuit::Layouter<F>,
+            mut layouter: impl halo2wrong::halo2::circuit::Layouter<C::Scalar>,
         ) -> Result<(), Error> {
             let config = config.clone();
             format!("{config:?}");
@@ -794,7 +798,7 @@ mod test {
                         .expect("fail to sign a hashed message.");
                     sign.reverse();
                     let sign_big = BigUint::from_bytes_le(&sign);
-                    let sign_limbs = decompose_big::<F>(sign_big.clone(), num_limbs, limb_width);
+                    let sign_limbs = decompose_big::<C>(sign_big.clone(), num_limbs, limb_width);
                     let sign_unassigned = UnassignedInteger::from(sign_limbs);
                     let sign = RSASignature::new(sign_unassigned).clone();
                     format!("{sign:?}");
@@ -803,7 +807,7 @@ mod test {
                     let n_big =
                         BigUint::from_radix_le(&self.public_key.n().clone().to_radix_le(16), 16)
                             .unwrap();
-                    let n_limbs = decompose_big::<F>(n_big.clone(), num_limbs, limb_width);
+                    let n_limbs = decompose_big::<C>(n_big.clone(), num_limbs, limb_width);
                     let n_unassigned = UnassignedInteger::from(n_limbs);
                     let e_fix = RSAPubE::Fix(BigUint::from(Self::DEFAULT_E));
                     let public_key = RSAPublicKey::new(n_unassigned, e_fix).clone();
@@ -831,7 +835,7 @@ mod test {
         fn synthesize(
             &self,
             config: Self::Config,
-            mut layouter: impl halo2wrong::halo2::circuit::Layouter<F>,
+            mut layouter: impl halo2wrong::halo2::circuit::Layouter<C::Scalar>,
         ) -> Result<(), Error> {
             Ok(())
         }

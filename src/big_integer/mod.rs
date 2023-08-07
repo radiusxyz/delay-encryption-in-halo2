@@ -208,7 +208,10 @@ pub use chip::*;
 pub use instructions::*;
 pub use utils::*;
 
-use halo2wrong::halo2::{arithmetic::FieldExt, circuit::Value};
+// use halo2wrong::halo2::{arithmetic::FieldExt, circuit::Value};
+use halo2wrong::halo2::circuit::Value;
+use halo2_proofs::halo2curves::CurveAffine; // zeroknight - instead of arithmetic::FieldExt
+
 use maingate::{fe_to_big, AssignedValue};
 use num_bigint::BigUint;
 
@@ -233,16 +236,16 @@ impl RangeType for Muled {}
 
 /// An assigned limb of an non native integer.
 #[derive(Debug, Clone)]
-pub struct AssignedLimb<F: FieldExt, T: RangeType>(AssignedValue<F>, PhantomData<T>);
+pub struct AssignedLimb<C: CurveAffine, T: RangeType>(AssignedValue<C::Scalar>, PhantomData<T>);
 
-impl<F: FieldExt, T: RangeType> From<AssignedLimb<F, T>> for AssignedValue<F> {
+impl<C: CurveAffine, T: RangeType> From<AssignedLimb<C, T>> for AssignedValue<C::Scalar> {
     /// [`AssignedLimb`] can be also represented as [`AssignedValue`].
-    fn from(limb: AssignedLimb<F, T>) -> Self {
+    fn from(limb: AssignedLimb<C, T>) -> Self {
         limb.0
     }
 }
 
-impl<F: FieldExt, T: RangeType> AssignedLimb<F, T> {
+impl<C: CurveAffine, T: RangeType> AssignedLimb<C, T> {
     /// Constructs new [`AssignedLimb`] from an assigned value.
     ///
     /// # Arguments
@@ -250,31 +253,31 @@ impl<F: FieldExt, T: RangeType> AssignedLimb<F, T> {
     ///
     /// # Return values
     /// Returns a new [`AssignedLimb`].
-    pub fn from(value: AssignedValue<F>) -> Self {
+    pub fn from(value: AssignedValue<C::Scalar>) -> Self {
         AssignedLimb::<_, T>(value, PhantomData)
     }
 
     /// Returns the witness value as [`AssignedValue<F>`].
-    pub fn assigned_val(&self) -> AssignedValue<F> {
+    pub fn assigned_val(&self) -> AssignedValue<C::Scalar> {
         self.0.clone()
     }
 
     /// Converts the [`RangeType`] from [`Fresh`] to [`Muled`].
-    pub fn to_muled(self) -> AssignedLimb<F, Muled> {
-        AssignedLimb::<F, Muled>(self.0, PhantomData)
+    pub fn to_muled(self) -> AssignedLimb<C, Muled> {
+        AssignedLimb::<C, Muled>(self.0, PhantomData)
     }
 }
 
 /// Witness integer that is about to be assigned.
 #[derive(Debug, Clone)]
-pub struct UnassignedInteger<F: FieldExt> {
-    pub(crate) value: Value<Vec<F>>,
+pub struct UnassignedInteger<C: CurveAffine> {
+    pub(crate) value: Value<Vec<C>>,
     pub(crate) num_limbs: usize,
 }
 
-impl<'a, F: FieldExt> From<Vec<F>> for UnassignedInteger<F> {
+impl<'a, C: CurveAffine> From<Vec<C>> for UnassignedInteger<C> {
     /// Constructs new [`UnassignedInteger`] from a vector of witness values.
-    fn from(value: Vec<F>) -> Self {
+    fn from(value: Vec<C>) -> Self {
         let num_limbs = value.len();
         UnassignedInteger {
             value: Value::known(value),
@@ -283,7 +286,7 @@ impl<'a, F: FieldExt> From<Vec<F>> for UnassignedInteger<F> {
     }
 }
 
-impl<F: FieldExt> UnassignedInteger<F> {
+impl<C: CurveAffine> UnassignedInteger<C> {
     /// Returns indexed limb as [`Value<F>`].
     ///
     /// # Arguments
@@ -291,7 +294,7 @@ impl<F: FieldExt> UnassignedInteger<F> {
     ///
     /// # Return values
     /// Returns the specified limb as [`Value<F>`].
-    fn limb(&self, idx: usize) -> Value<F> {
+    fn limb(&self, idx: usize) -> Value<C> {
         self.value.as_ref().map(|e| e[idx])
     }
 
@@ -303,9 +306,9 @@ impl<F: FieldExt> UnassignedInteger<F> {
 
 /// An assigned witness integer.
 #[derive(Debug, Clone)]
-pub struct AssignedInteger<F: FieldExt, T: RangeType>(Vec<AssignedLimb<F, T>>);
+pub struct AssignedInteger<C: CurveAffine, T: RangeType>(Vec<AssignedLimb<C, T>>);
 
-impl<F: FieldExt, T: RangeType> AssignedInteger<F, T> {
+impl<C: CurveAffine, T: RangeType> AssignedInteger<C, T> {
     /// Creates a new [`AssignedInteger`].
     ///
     /// # Arguments
@@ -313,12 +316,12 @@ impl<F: FieldExt, T: RangeType> AssignedInteger<F, T> {
     ///
     /// # Return values
     /// Returns a new [`AssignedInteger`].
-    pub fn new(limbs: &[AssignedLimb<F, T>]) -> Self {
+    pub fn new(limbs: &[AssignedLimb<C, T>]) -> Self {
         AssignedInteger(limbs.to_vec())
     }
 
     /// Returns assigned limbs.
-    pub fn limbs(&self) -> Vec<AssignedLimb<F, T>> {
+    pub fn limbs(&self) -> Vec<AssignedLimb<C, T>> {
         self.0.clone()
     }
 
@@ -329,7 +332,7 @@ impl<F: FieldExt, T: RangeType> AssignedInteger<F, T> {
     ///
     /// # Return values
     /// Returns the specified limb as [`AssignedValue<F>`].
-    pub fn limb(&self, idx: usize) -> AssignedValue<F> {
+    pub fn limb(&self, idx: usize) -> AssignedValue<C::Scalar> {
         self.0[idx].clone().into()
     }
 
@@ -363,7 +366,7 @@ impl<F: FieldExt, T: RangeType> AssignedInteger<F, T> {
     /// # Arguments
     /// * idx - index of the modified limb.
     /// * limb - new limb.
-    pub fn replace_limb(&mut self, idx: usize, limb: AssignedLimb<F, T>) {
+    pub fn replace_limb(&mut self, idx: usize, limb: AssignedLimb<C, T>) {
         self.0[idx] = limb;
     }
 
@@ -372,7 +375,7 @@ impl<F: FieldExt, T: RangeType> AssignedInteger<F, T> {
     /// # Arguments
     /// * num_extend_limbs - the number of limbs to add.
     /// * zero_value - an assigned value representing zero.
-    pub fn extend_limbs(&mut self, num_extend_limbs: usize, zero_value: AssignedValue<F>) {
+    pub fn extend_limbs(&mut self, num_extend_limbs: usize, zero_value: AssignedValue<C::Scalar>) {
         let pre_num_limbs = self.num_limbs();
         for _ in 0..num_extend_limbs {
             self.0.push(AssignedLimb::from(zero_value.clone()));
@@ -381,7 +384,7 @@ impl<F: FieldExt, T: RangeType> AssignedInteger<F, T> {
     }
 }
 
-impl<F: FieldExt> AssignedInteger<F, Fresh> {
+impl<C: CurveAffine> AssignedInteger<C, Fresh> {
     /// Converts the [`RangeType`] from [`Fresh`] to [`Muled`].
     ///
     /// # Arguments
@@ -390,17 +393,17 @@ impl<F: FieldExt> AssignedInteger<F, Fresh> {
     /// # Return values
     /// Returns the converted integer whose type is [`AssignedInteger<F, Muled>`].
     /// The number of limbs of the converted integer increases to `2 * num_limb - 1`.
-    pub fn to_muled(&self, zero_limb: AssignedLimb<F, Muled>) -> AssignedInteger<F, Muled> {
+    pub fn to_muled(&self, zero_limb: AssignedLimb<C, Muled>) -> AssignedInteger<C, Muled> {
         let num_limb = self.num_limbs();
         let mut limbs = self
             .limbs()
             .into_iter()
             .map(|limb| limb.to_muled())
-            .collect::<Vec<AssignedLimb<F, Muled>>>();
+            .collect::<Vec<AssignedLimb<C, Muled>>>();
         for _ in 0..(num_limb - 1) {
             limbs.push(zero_limb.clone())
         }
-        AssignedInteger::<F, Muled>::new(&limbs[..])
+        AssignedInteger::<C, Muled>::new(&limbs[..])
     }
 }
 
