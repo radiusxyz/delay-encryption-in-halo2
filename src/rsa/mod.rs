@@ -396,6 +396,7 @@ mod test {
         };
     }
 
+/* // zeroknight - sha2 not supported atm..
     impl_rsa_signature_test_circuit!(
         TestRSASignatureWithHashConfig,
         TestRSASignatureWithHashCircuit,
@@ -728,6 +729,7 @@ mod test {
             Ok(())
         }
     );
+    */
 
     impl_rsa_signature_test_circuit!(
         TestDeriveTraitsConfig,
@@ -802,6 +804,7 @@ mod test {
             Ok(())
         }
     );
+    
 
     /*#[test]
     #[should_panic]

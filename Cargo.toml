@@ -9,14 +9,22 @@ license = "MIT"
 
 [dependencies]
 # Halo2
-maingate = {git = "https://github.com/privacy-scaling-explorations/halo2wrong", tags = "v2023_04_20" }
-halo2wrong = {git = "https://github.com/privacy-scaling-explorations/halo2wrong", tags = "v2023_04_20"}
+maingate = {git = "https://github.com/privacy-scaling-explorations/halo2wrong", tags = "v2023_04_20" , default-features = false }
+halo2wrong = {git = "https://github.com/privacy-scaling-explorations/halo2wrong", tags = "v2023_04_20" , default-features = false }
+halo2 = { package = "halo2_proofs", git = "https://github.com/privacy-scaling-explorations/halo2", tags ="v2023_04_20" }
+ecc = {git = "https://github.com/privacy-scaling-explorations/halo2wrong", tags = "v2023_04_20"}
 
 # Big-integer
 num-bigint = { version = "0.4", features = ["rand"] }
 ff = "0.13"
 
+subtle = { version = "2.3", default-features = false }
+# Feature
+poseidon = {git = "https://github.com/privacy-scaling-explorations/poseidon.git", tag = "v2023_04_20" }
+
 [dev-dependencies]
 rand = "0.8.5"
 rsa = "0.6.1"
 sha2 = "0.10.6"
+rand_core = { version = "0.6", default-features = false }
+paste = "1.0.7"
