@@ -9,20 +9,20 @@ pub use rsa::*;
 pub mod hash;
 pub use hash::*;
 
-use ff::PrimeField;
-use num_bigint::BigUint;
+use ff::{PrimeField, FromUniformBytes};
+use num_bigint::{BigUint, RandomBits};
 
-use halo2wrong::halo2::{ 
+use halo2wrong::{halo2::{ 
     plonk::{Circuit, ConstraintSystem},
     circuit::SimpleFloorPlanner,
-};
+}, RegionCtx};
 
-use maingate::{MainGate, RangeChip};
+use maingate::{MainGate, RangeChip, decompose_big, RangeInstructions};
 
 struct delay_enc_circuit<F: PrimeField> {
     n : BigUint,
     e : BigUint,
-    x : BigUint,
+    x : BigUint,        // base integer
     _f: PhantomData<F>
 }
 
@@ -63,10 +63,98 @@ impl<F: PrimeField> Circuit<F> for delay_enc_circuit<F> {
         RSAConfig::new(bigint_config)
     }
 
-    fn synthesize(&self, config: Self::Config, layouter: impl halo2wrong::halo2::circuit::Layouter<F>) -> Result<(), halo2wrong::halo2::plonk::Error> {
+    fn synthesize(&self, config: Self::Config, mut layouter: impl halo2wrong::halo2::circuit::Layouter<F>) -> Result<(), halo2wrong::halo2::plonk::Error> {
         let rsa_chip = self.rsa_chip(config);
         let bigint_chip = rsa_chip.bigint_chip();
+        let limb_width = Self::LIMB_WIDTH;
+        let num_limbs = Self::BITS_LEN / Self::LIMB_WIDTH;
+
+        layouter.assign_region( //name, assignment)
+            || "rsa modpow with 2048 bits",
+            |region| {
+                let offset = 0;
+                let ctx = &mut RegionCtx::new(region, offset);
+                let e_limbs = decompose_big::<F>// (e, number_of_limbs, bit_len)
+                    (self.e.clone(), 1, Self::EXP_LIMB_BITS);   // EXP_LIMB_BITS 5
+                let e_unassigned = UnassignedInteger::from(e_limbs);
+                let e_var = RSAPubE::Var(e_unassigned);
+                let e_fix = RSAPubE::Fix(BigUint::from(Self::DEFAULT_E));
+
+                let n_limbs = decompose_big::<F>(self.n.clone(), 
+                                num_limbs, limb_width);
+                let n_unassigned = UnassignedInteger::from(n_limbs);
+                
+                let public_key_var = RSAPublicKey::new(n_unassigned.clone(), e_var);
+                let public_key_var = rsa_chip.assign_public_key(ctx, public_key_var)?;
+                let public_key_fix = RSAPublicKey::new(n_unassigned, e_fix);
+                let public_key_fix = rsa_chip.assign_public_key(ctx, public_key_fix)?;
+
+                let x_limbs = decompose_big::<F>(self.x.clone(), 
+                                    num_limbs, limb_width);
+                let x_unssigned = UnassignedInteger::from(x_limbs);
+                // Assigns a variable AssignedInteger whose RangeType is Fresh.
+                //Returns a new AssignedInteger. The bit length of each limb is less than self.limb_width, and the number of its limbs is self.num_limbs.
+                let x_assigned = bigint_chip.assign_integer(ctx, x_unssigned)?;
+                // Given a base x, a RSA public key (e,n), performs the modular power x^e mod n.
+                let powed_var = rsa_chip.modpow_public_key(ctx, &x_assigned, &public_key_var)?;
+                let powed_fix = rsa_chip.modpow_public_key(ctx, &x_assigned, &public_key_fix)?;
+
+                let valid_powed_var = big_pow_mod(&self.x, &self.e, &self.n);
+                let valid_powed_fix = big_pow_mod(&self.x, &BigUint::from(Self::DEFAULT_E), &self.n);
+
+                let valid_powed_var = bigint_chip.assign_constant_fresh(ctx, valid_powed_var)?;
+                let valid_powed_fix = bigint_chip.assign_constant_fresh(ctx, valid_powed_fix)?;
+                bigint_chip.assert_equal_fresh(ctx, &powed_var, &valid_powed_var)?;
+                bigint_chip.assert_equal_fresh(ctx, &powed_fix, &valid_powed_fix)?;
+
+                Ok(())
+            },
+        )?;
+        let range_chip = bigint_chip.range_chip();
+        range_chip.load_table(&mut layouter)?;
 
         Ok(())
     }
+}
+
+#[test]
+fn test_modpow_2048_circuit() {
+
+    use rand::{thread_rng, Rng};
+    use halo2wrong::halo2::dev::MockProver;
+
+    // FromUniformBytes : Trait for constructing a PrimeField element from a fixed-length uniform byte array.
+    fn run<F: FromUniformBytes<64> + Ord>() {
+        let mut rng = thread_rng();
+        let bits_len = delay_enc_circuit::<F>::BITS_LEN as u64;
+        let mut n = BigUint::default();
+        while n.bits() != bits_len {
+            n = rng.sample(RandomBits::new(bits_len));
+        }
+        println!("found!!");
+        let e = rng.sample::<BigUint, _>(RandomBits::new(delay_enc_circuit::<F>::EXP_LIMB_BITS as u64)) % &n;
+        let x = rng.sample::<BigUint,_>(RandomBits::new(bits_len)) % &n;
+        let circuit = delay_enc_circuit::<F> {
+            n,
+            e,
+            x,
+            _f: PhantomData
+        };
+
+        let public_inputs = vec![vec![]];
+        let k = 17;
+        let prover = match MockProver::run(k, &circuit, public_inputs) {
+            Ok(prover) => prover,
+            Err(e) => panic!("{:#?}", e)
+        };
+        assert_eq!(prover.verify().is_err(), false);
+    }
+
+    //run with different curves
+    use halo2wrong::curves::bn256::Fq as BnFq;
+    use halo2wrong::curves::pasta::{Fp as PastaFp, Fq as PastaFq};
+    run::<BnFq>();
+    run::<PastaFp>();
+    run::<PastaFq>();
+
 }
