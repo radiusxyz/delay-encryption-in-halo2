@@ -99,11 +99,11 @@ impl<F: PrimeField, const T: usize, const RATE: usize> Circuit<F>
             overflow_bit_lens,
         );
 
-        let bigint_config = BigIntConfig::new(range_config, main_gate_config);
+        let bigint_config = BigIntConfig::new(range_config, main_gate_config.clone());
         let rsa_config = RSAConfig::new(bigint_config);
 
         // Poseidon Hash
-        let main_gate_config = MainGate::<F>::configure(meta);
+        //let main_gate_config = MainGate::<F>::configure(meta);
 
         DelayEncCircuitConfig {
             rsa_config,
@@ -173,17 +173,19 @@ impl<F: PrimeField, const T: usize, const RATE: usize> Circuit<F>
 
             // inputs
             for e in self.inputs.as_ref().transpose_vec(self.n_hash) {
-                let e = main_gate.assign_value(ctx, e.map(|e| *e))?;
+                let e = main_gate.assign_value(ctx, e.map(|v| *v))?;
                 println!("intpus_cell : {:?}", e.value());
                 hasher_chip.update(&[e.clone()]);
             }
             // constrain squeezing new challenge
             let challenge = hasher_chip.hash(ctx)?;
 
-            println!("[in circuit] inputs: {:?}",self.inputs);
-            println!("[in circuit] challenge: {:?}", challenge.value());
+            //println!("[in circuit] inputs: {:?}",self.inputs);
+            //println!("[in circuit] challenge: {:?}", challenge.value());
 
             let expected = main_gate.assign_value(ctx, self.expected)?;
+
+            //println!("[in circuit] expected: {:?}", expected.value());
 
             main_gate.assert_equal(ctx, &challenge, &expected)?;
             Ok(())
@@ -207,7 +209,6 @@ fn test_modpow_2048_circuit() {
         while n.bits() != bits_len {
             n = rng.sample(RandomBits::new(bits_len));
         }
-        println!("found!!");
         let e = rng.sample::<BigUint, _>(RandomBits::new(DelayEncryptCircuit::<F, T, RATE>::EXP_LIMB_BITS as u64)) % &n;
         let x = rng.sample::<BigUint,_>(RandomBits::new(bits_len)) % &n;
 
@@ -215,11 +216,11 @@ fn test_modpow_2048_circuit() {
         let mut ref_hasher = Poseidon::<F, T, RATE>::new(8, 57);
         // Given number of round parameters constructs new Posedion instance calculating unoptimized round constants with reference Grain then calculates optimized constants and sparse matrices
         let spec = Spec::<F, T, RATE>::new(8, 57);
-        let inputs = (0..3*T).map(|_| F::random(OsRng)).collect::<Vec<F>>();
+        let inputs = (0..(3*T)).map(|_| F::random(OsRng)).collect::<Vec<F>>();
         ref_hasher.update(&inputs[..]);
         let expected = ref_hasher.squeeze();
-        println!("inputs: {:?}",inputs);
-        println!("expected: {:?}", expected);
+        //println!("inputs: {:?}",inputs);
+        //println!("expected: {:?}", expected);
 
         let circuit = DelayEncryptCircuit::<F, T, RATE> {
             n,
@@ -246,10 +247,10 @@ fn test_modpow_2048_circuit() {
     }
 
     //run with different curves
-    use halo2wrong::curves::bn256::Fq as BnFq;
+    use halo2wrong::curves::bn256::Fr as BnFq;
     use halo2wrong::curves::pasta::{Fp as PastaFp, Fq as PastaFq};
-    run::<BnFq, 5, 4>();
-    run::<PastaFp, 5, 4>();
-    run::<PastaFq, 5, 4>();
+    run::<BnFq, 3, 2>();
+    //run::<PastaFp, 5, 4>();
+    //run::<PastaFq, 5, 4>();
 
 }

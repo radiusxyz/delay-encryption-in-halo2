@@ -288,6 +288,7 @@ mod tests {
 
                     for e in self.inputs.as_ref().transpose_vec(self.n) {
                         let e = main_gate.assign_value(ctx, e.map(|e| *e))?;
+                        println!("{:?}", e);
                         transcript_chip.write_scalar(&e);
                     }
                     let challenge = transcript_chip.squeeze(ctx)?;
@@ -302,6 +303,33 @@ mod tests {
 
             Ok(())
         }
+    }
+
+    #[test]
+    fn test_example() {
+        //use crate::curves::bn256::{Fr, G1Affine};
+        use halo2wrong::curves::bn256::{Fr, G1Affine};
+        for number_of_inputs in 0..3*3 {
+            println!("{:?}", number_of_inputs);
+            let mut ref_hasher = Poseidon::<Fr, 3, 2>::new(8, 57);
+            let spec = Spec::<Fr, 3, 2>::new(8, 57);
+
+            let inputs: Vec<Fr> = (0..number_of_inputs)
+                .map(|_| Fr::random(OsRng))
+                .collect::<Vec<Fr>>();
+
+            ref_hasher.update(&inputs[..]);
+            let expected = ref_hasher.squeeze();
+
+            let circuit: TestCircuit<G1Affine, 3, 2> = TestCircuit {
+                spec: spec.clone(),
+                n: number_of_inputs,
+                inputs: Value::known(inputs),
+                expected: Value::known(expected),
+            };
+            let instance = vec![vec![]];
+            mock_prover_verify(&circuit, instance);
+        }        
     }
 
     macro_rules! test {
