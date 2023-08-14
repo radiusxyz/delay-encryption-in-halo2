@@ -25,7 +25,7 @@ use halo2wrong::{halo2::{
 use halo2wrong::halo2::plonk::Error;
 
 use halo2::{circuit::{layouter, Region}, plonk::Challenge};
-use maingate::{MainGate, RangeChip, decompose_big, RangeInstructions, MainGateConfig, RangeConfig, MainGateInstructions};
+use maingate::{MainGate, RangeChip, decompose_big, RangeInstructions, MainGateConfig, RangeConfig, MainGateInstructions, mock_prover_verify};
 
 use ecc::{EccConfig, integer::rns::Rns, BaseFieldEccChip};
 use ecc::halo2::circuit::Value;
@@ -163,7 +163,7 @@ impl<F: PrimeField, const T: usize, const RATE: usize> Circuit<F>
         let range_chip = bigint_chip.range_chip();
         range_chip.load_table(&mut layouter)?;
 
-        let main_gate = MainGate::<F>::new(config.main_gate_config.clone());
+        let mut main_gate = MainGate::<F>::new(config.main_gate_config.clone());
         layouter.assign_region(
         || "poseidon region", 
         |region| {
@@ -171,14 +171,18 @@ impl<F: PrimeField, const T: usize, const RATE: usize> Circuit<F>
             let ctx = &mut RegionCtx::new(region, offset);
             let mut hasher_chip = HasherChip::<F, NUMBER_OF_LIMBS, BIT_LEN_LIMB, T, RATE>::new(ctx, &self.spec, &config.main_gate_config )?;
 
-
             // inputs
             for e in self.inputs.as_ref().transpose_vec(self.n_hash) {
                 let e = main_gate.assign_value(ctx, e.map(|e| *e))?;
+                println!("intpus_cell : {:?}", e.value());
                 hasher_chip.update(&[e.clone()]);
             }
             // constrain squeezing new challenge
             let challenge = hasher_chip.hash(ctx)?;
+
+            println!("[in circuit] inputs: {:?}",self.inputs);
+            println!("[in circuit] challenge: {:?}", challenge.value());
+
             let expected = main_gate.assign_value(ctx, self.expected)?;
 
             main_gate.assert_equal(ctx, &challenge, &expected)?;
@@ -214,6 +218,8 @@ fn test_modpow_2048_circuit() {
         let inputs = (0..3*T).map(|_| F::random(OsRng)).collect::<Vec<F>>();
         ref_hasher.update(&inputs[..]);
         let expected = ref_hasher.squeeze();
+        println!("inputs: {:?}",inputs);
+        println!("expected: {:?}", expected);
 
         let circuit = DelayEncryptCircuit::<F, T, RATE> {
             n,
@@ -225,16 +231,18 @@ fn test_modpow_2048_circuit() {
             n_hash: 3*T,
             inputs: Value::known(inputs),
             expected: Value::known(expected),
-        
         };
 
         let public_inputs = vec![vec![]];
-        let k = 17;
+        mock_prover_verify(&circuit, public_inputs);
+        /*
+        let k = 30; //17
         let prover = match MockProver::run(k, &circuit, public_inputs) {
             Ok(prover) => prover,
             Err(e) => panic!("{:#?}", e)
         };
         assert_eq!(prover.verify().is_err(), false);
+        */
     }
 
     //run with different curves
