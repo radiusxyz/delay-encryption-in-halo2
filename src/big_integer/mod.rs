@@ -11,17 +11,18 @@
 //! Below we present an example of its usage.
 //!
 //! ```
-//! use halo2_rsa::big_integer::{BigIntConfig, BigIntChip, BigIntInstructions, AssignedInteger, Fresh, Muled, RangeType, UnassignedInteger, RefreshAux};
-//! use halo2wrong::halo2::{arithmetic::FieldExt, circuit::Value, plonk::{Circuit, ConstraintSystem,Error}, circuit::SimpleFloorPlanner};
+//! use halo2_delay_enc::big_integer::{BigIntConfig, BigIntChip, BigIntInstructions, AssignedInteger, Fresh, Muled, RangeType, UnassignedInteger, RefreshAux};
+//! use halo2wrong::halo2::{arithmetic::Field, circuit::Value, plonk::{Circuit, ConstraintSystem,Error}, circuit::SimpleFloorPlanner};
 //! use maingate::{
 //!    big_to_fe, decompose_big, fe_to_big, AssignedValue, MainGate, MainGateConfig,
 //!    MainGateInstructions, RangeChip, RangeConfig, RangeInstructions, RegionCtx,
 //! };
+//! use ff::PrimeField;
 //! use num_bigint::BigUint;
 //! use std::marker::PhantomData;
 //!
 //! #[derive(Debug, Clone)]
-//! struct BigIntExample<F:FieldExt> {
+//! struct BigIntExample<F:PrimeField> {
 //!     // input integers to the circuit.
 //!     a: BigUint,
 //!     b: BigUint,
@@ -31,7 +32,7 @@
 //!     _f: PhantomData<F>,
 //! }
 //!
-//! impl<F: FieldExt> BigIntExample<F> {
+//! impl<F: PrimeField> BigIntExample<F> {
 //!     // Each limb of integers in our circuit is 64 bits.
 //!     const LIMB_WIDTH: usize = 64;
 //!     // The integers in our circuit is 2048 bits.
@@ -41,7 +42,7 @@
 //!     }
 //! }
 //!
-//! impl<F: FieldExt> Circuit<F> for BigIntExample<F> {
+//! impl<F: PrimeField> Circuit<F> for BigIntExample<F> {
 //!     // The configuration of our circuit is `BigIntConfig` itself.
 //!     type Config = BigIntConfig;
 //!     type FloorPlanner = SimpleFloorPlanner;
@@ -208,7 +209,10 @@ pub use chip::*;
 pub use instructions::*;
 pub use utils::*;
 
-use halo2wrong::halo2::{arithmetic::FieldExt, circuit::Value};
+//zeroknight
+use ff::PrimeField;
+
+use halo2wrong::halo2::{arithmetic::Field, circuit::Value};
 use maingate::{fe_to_big, AssignedValue};
 use num_bigint::BigUint;
 
@@ -233,16 +237,16 @@ impl RangeType for Muled {}
 
 /// An assigned limb of an non native integer.
 #[derive(Debug, Clone)]
-pub struct AssignedLimb<F: FieldExt, T: RangeType>(AssignedValue<F>, PhantomData<T>);
+pub struct AssignedLimb<F: Field, T: RangeType>(AssignedValue<F>, PhantomData<T>);
 
-impl<F: FieldExt, T: RangeType> From<AssignedLimb<F, T>> for AssignedValue<F> {
+impl<F: Field, T: RangeType> From<AssignedLimb<F, T>> for AssignedValue<F> {
     /// [`AssignedLimb`] can be also represented as [`AssignedValue`].
     fn from(limb: AssignedLimb<F, T>) -> Self {
         limb.0
     }
 }
 
-impl<F: FieldExt, T: RangeType> AssignedLimb<F, T> {
+impl<F: Field, T: RangeType> AssignedLimb<F, T> {
     /// Constructs new [`AssignedLimb`] from an assigned value.
     ///
     /// # Arguments
@@ -267,12 +271,12 @@ impl<F: FieldExt, T: RangeType> AssignedLimb<F, T> {
 
 /// Witness integer that is about to be assigned.
 #[derive(Debug, Clone)]
-pub struct UnassignedInteger<F: FieldExt> {
+pub struct UnassignedInteger<F: Field> {
     pub(crate) value: Value<Vec<F>>,
     pub(crate) num_limbs: usize,
 }
 
-impl<'a, F: FieldExt> From<Vec<F>> for UnassignedInteger<F> {
+impl<'a, F: Field> From<Vec<F>> for UnassignedInteger<F> {
     /// Constructs new [`UnassignedInteger`] from a vector of witness values.
     fn from(value: Vec<F>) -> Self {
         let num_limbs = value.len();
@@ -283,7 +287,7 @@ impl<'a, F: FieldExt> From<Vec<F>> for UnassignedInteger<F> {
     }
 }
 
-impl<F: FieldExt> UnassignedInteger<F> {
+impl<F: Field> UnassignedInteger<F> {
     /// Returns indexed limb as [`Value<F>`].
     ///
     /// # Arguments
@@ -303,9 +307,9 @@ impl<F: FieldExt> UnassignedInteger<F> {
 
 /// An assigned witness integer.
 #[derive(Debug, Clone)]
-pub struct AssignedInteger<F: FieldExt, T: RangeType>(Vec<AssignedLimb<F, T>>);
+pub struct AssignedInteger<F: Field, T: RangeType>(Vec<AssignedLimb<F, T>>);
 
-impl<F: FieldExt, T: RangeType> AssignedInteger<F, T> {
+impl<F: PrimeField, T: RangeType> AssignedInteger<F, T> {
     /// Creates a new [`AssignedInteger`].
     ///
     /// # Arguments
@@ -381,7 +385,7 @@ impl<F: FieldExt, T: RangeType> AssignedInteger<F, T> {
     }
 }
 
-impl<F: FieldExt> AssignedInteger<F, Fresh> {
+impl<F: PrimeField> AssignedInteger<F, Fresh> {
     /// Converts the [`RangeType`] from [`Fresh`] to [`Muled`].
     ///
     /// # Arguments

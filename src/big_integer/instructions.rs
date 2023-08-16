@@ -1,10 +1,10 @@
 use crate::{AssignedInteger, Fresh, Muled, RangeType, RefreshAux, UnassignedInteger};
-use halo2wrong::halo2::{arithmetic::FieldExt, plonk::Error};
+use halo2wrong::halo2::{arithmetic::Field, plonk::Error};
 use maingate::{AssignedValue, RegionCtx};
 use num_bigint::BigUint;
 
 /// Instructions for big-integer operations.
-pub trait BigIntInstructions<F: FieldExt> {
+pub trait BigIntInstructions<F: Field> {
     /// Assigns a variable [`AssignedInteger`] whose [`RangeType`] is [`Fresh`].
     fn assign_integer(
         &self,

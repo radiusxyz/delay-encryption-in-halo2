@@ -98,7 +98,7 @@ pub(super) fn generate_mds<F: FromUniformBytes<64> + Ord, const T: usize>(
 
 #[cfg(test)]
 mod tests {
-    use halo2curves::pasta::Fp;
+    use halo2wrong::curves::pasta::Fp;
 
     use super::{generate_mds, Grain};
 

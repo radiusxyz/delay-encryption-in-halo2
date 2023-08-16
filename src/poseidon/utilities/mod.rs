@@ -1,7 +1,7 @@
 //! Utility gadgets.
 
 use ff::{Field, PrimeField, PrimeFieldBits};
-use halo2_proofs::{
+use halo2wrong::halo2::{
     circuit::{AssignedCell, Cell, Layouter, Value},
     plonk::{Advice, Column, Error, Expression},
 };
@@ -241,13 +241,13 @@ mod tests {
     use super::*;
     use ff::FromUniformBytes;
     use group::ff::{Field, PrimeField};
-    use halo2_proofs::{
+    use halo2wrong::halo2::{
         circuit::{Layouter, SimpleFloorPlanner},
         dev::{FailureLocation, MockProver, VerifyFailure},
         plonk::{Any, Circuit, ConstraintSystem, Constraints, Error, Selector},
         poly::Rotation,
     };
-    use halo2curves::pasta::pallas;
+    use halo2wrong::curves::pasta::pallas;
     use proptest::prelude::*;
     use rand::rngs::OsRng;
     use std::convert::TryInto;

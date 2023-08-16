@@ -4,7 +4,7 @@ use std::marker::PhantomData;
 
 use bitvec::prelude::*;
 use ff::{FromUniformBytes, PrimeField};
-use halo2_proofs::arithmetic::Field;
+use halo2wrong::halo2::arithmetic::Field;
 
 const STATE: usize = 80;
 
@@ -184,7 +184,7 @@ impl<F: PrimeField> Iterator for Grain<F> {
 
 #[cfg(test)]
 mod tests {
-    use halo2curves::pasta::Fp;
+    use halo2wrong::curves::pasta::Fp;
 
     use super::{Grain, SboxType};
 

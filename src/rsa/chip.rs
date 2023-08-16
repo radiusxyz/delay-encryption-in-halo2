@@ -5,11 +5,14 @@ use crate::{
     AssignedRSAPubE, AssignedRSAPublicKey, AssignedRSASignature, Fresh, Muled, RSAInstructions,
     RSAPubE, RSAPublicKey, RSASignature, RangeType, RefreshAux, UnassignedInteger,
 };
-use halo2wrong::halo2::{arithmetic::FieldExt, circuit::Value, plonk::Error};
+use halo2wrong::halo2::{arithmetic::Field, circuit::Value, plonk::Error};
 use maingate::{
     big_to_fe, decompose_big, fe_to_big, AssignedValue, MainGate, MainGateInstructions, RangeChip,
     RangeConfig, RangeInstructions, RegionCtx,
 };
+
+// zeroknight - use ff::PrimeField instead of halo2wrong::halo2::arithmetic::Field
+use ff::{PrimeField, FromUniformBytes};
 
 use num_bigint::BigUint;
 use std::marker::PhantomData;
@@ -36,7 +39,7 @@ impl RSAConfig {
 
 /// Chip for [`RSAInstructions`].
 #[derive(Debug, Clone)]
-pub struct RSAChip<F: FieldExt> {
+pub struct RSAChip<F: PrimeField> {
     /// Chip configuration.
     config: RSAConfig,
     /// The default bit length of [`Fresh`] type integers in this chip.
@@ -46,7 +49,7 @@ pub struct RSAChip<F: FieldExt> {
     _f: PhantomData<F>,
 }
 
-impl<F: FieldExt> RSAInstructions<F> for RSAChip<F> {
+impl<F: PrimeField> RSAInstructions<F> for RSAChip<F> {
     /// Assigns a [`AssignedRSAPublicKey`].
     ///
     /// # Arguments
@@ -133,7 +136,7 @@ impl<F: FieldExt> RSAInstructions<F> for RSAChip<F> {
         signature: &AssignedRSASignature<F>,
     ) -> Result<AssignedValue<F>, Error> {
         let main_gate = self.main_gate();
-        let mut is_eq = main_gate.assign_constant(ctx, F::one())?;
+        let mut is_eq = main_gate.assign_constant(ctx, F::ONE)?;
         let powed = self.modpow_public_key(ctx, &signature.c, public_key)?;
         let hash_len = 4;
         // 1. Check hashed data
@@ -199,7 +202,7 @@ impl<F: FieldExt> RSAInstructions<F> for RSAChip<F> {
     }
 }
 
-impl<F: FieldExt> RSAChip<F> {
+impl<F: PrimeField> RSAChip<F> {
     pub const LIMB_WIDTH: usize = 64;
 
     /// Create a new [`RSAChip`] from the configuration and parameters.
@@ -270,14 +273,14 @@ mod test {
 
     macro_rules! impl_rsa_modpow_test_circuit {
         ($circuit_name:ident, $test_fn_name:ident, $bits_len:expr, $should_be_error:expr, $( $synth:tt )*) => {
-            struct $circuit_name<F: FieldExt> {
+            struct $circuit_name<F: PrimeField> {
                 n: BigUint,
                 e: BigUint,
                 x: BigUint,
                 _f: PhantomData<F>
             }
 
-            impl<F: FieldExt> $circuit_name<F> {
+            impl<F: PrimeField> $circuit_name<F> {
                 const BITS_LEN:usize = $bits_len;
                 const LIMB_WIDTH:usize = RSAChip::<F>::LIMB_WIDTH;
                 const EXP_LIMB_BITS:usize = 5;
@@ -287,7 +290,7 @@ mod test {
                 }
             }
 
-            impl<F: FieldExt> Circuit<F> for $circuit_name<F> {
+            impl<F: PrimeField> Circuit<F> for $circuit_name<F> {
                 type Config = RSAConfig;
                 type FloorPlanner = SimpleFloorPlanner;
 
@@ -317,7 +320,7 @@ mod test {
 
             #[test]
             fn $test_fn_name() {
-                fn run<F: FieldExt>() {
+                fn run<F: FromUniformBytes<64> + Ord>() {   // zeroknight - instead of Primefield
                     let mut rng = thread_rng();
                     let bits_len = $circuit_name::<F>::BITS_LEN as u64;
                     let mut n = BigUint::default();
@@ -612,11 +615,11 @@ mod test {
 
     macro_rules! impl_rsa_signature_test_circuit {
         ($circuit_name:ident, $test_fn_name:ident, $bits_len:expr, $should_be_error:expr, $( $synth:tt )*) => {
-            struct $circuit_name<F: FieldExt> {
+            struct $circuit_name<F: Field> {
                 _f: PhantomData<F>
             }
 
-            impl<F: FieldExt> $circuit_name<F> {
+            impl<F: PrimeField> $circuit_name<F> {
                 const BITS_LEN:usize = $bits_len;
                 const LIMB_WIDTH:usize = RSAChip::<F>::LIMB_WIDTH;
                 const EXP_LIMB_BITS:usize = 5;
@@ -626,7 +629,7 @@ mod test {
                 }
             }
 
-            impl<F: FieldExt> Circuit<F> for $circuit_name<F> {
+            impl<F: PrimeField> Circuit<F> for $circuit_name<F> {
                 type Config = RSAConfig;
                 type FloorPlanner = SimpleFloorPlanner;
 
@@ -657,7 +660,7 @@ mod test {
             #[test]
             fn $test_fn_name() {
                 use halo2wrong::halo2::dev::MockProver;
-                fn run<F: FieldExt>() {
+                fn run<F: FromUniformBytes<64> + Ord>() {
                     let circuit = $circuit_name::<F> {
                         _f: PhantomData
                     };

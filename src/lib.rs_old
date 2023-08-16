@@ -4,15 +4,10 @@ use std::marker::PhantomData;
 pub use big_integer::*;
 
 pub mod rsa;
-use hash::hasher::HasherChip;
-use rand_core::OsRng;
 pub use rsa::*;
 
 pub mod hash;
 pub use hash::*;
-
-pub mod poseidon;
-pub use poseidon::*;
 
 use ff::{PrimeField, FromUniformBytes};
 use num_bigint::{BigUint, RandomBits};
@@ -24,13 +19,13 @@ use halo2wrong::{halo2::{
 
 use halo2wrong::halo2::plonk::Error;
 
-use halo2::{circuit::{layouter, Region}, plonk::Challenge};
-use maingate::{MainGate, RangeChip, decompose_big, RangeInstructions, MainGateConfig, RangeConfig, MainGateInstructions, mock_prover_verify};
+use halo2::circuit::layouter;
+use maingate::{MainGate, RangeChip, decompose_big, RangeInstructions, MainGateConfig, RangeConfig};
 
 use ecc::{EccConfig, integer::rns::Rns, BaseFieldEccChip};
 use ecc::halo2::circuit::Value;
 
-use ::poseidon::{Spec, Poseidon};
+use poseidon::Spec;
 
 
 // Poseidon Constants
@@ -41,10 +36,53 @@ const BIT_LEN_LIMB: usize = 68;
 struct DelayEncCircuitConfig {
     // RSA
     rsa_config: RSAConfig,
-
-    // Poseidon Hash
+    // Poseidon
     main_gate_config: MainGateConfig,
+    range_config: RangeConfig,
+
 }
+
+impl DelayEncCircuitConfig {
+    fn ecc_chip_config(&self) -> EccConfig {
+        EccConfig::new(self.range_config.clone(), self.main_gate_config.clone())
+    }
+
+    // CurveAffine vs PrimeField for Rns?
+    fn new<F: PrimeField>(meta: &mut ConstraintSystem<F>, rsa_config: RSAConfig) -> Self {
+        // Residue Numeral System Representation of an integer holding its values modulo several coprime integers.
+        // Contains all the necessary values to carry out operations such as multiplication and reduction in this representation.
+        //let rns = Rns::<C::Base, C::Scalar, NUMBER_OF_LIMBS, BIT_LEN_LIMB>::construct();
+        let rns = Rns::<bn256::Fr, bn256::Fq, NUMBER_OF_LIMBS, BIT_LEN_LIMB>::construct();  // zeroknight : originally C::Base, C::Scalar. the same PrimeField would work?!
+        
+        let main_gate_config = MainGate::<F>::configure(meta);
+        let overflow_bit_lens = rns.overflow_lengths();
+        let composition_bit_lens = vec![BIT_LEN_LIMB / NUMBER_OF_LIMBS];
+
+        let range_config = RangeChip::<F>::configure( // meta, main_gate_config, composition_bit_lens, overflow_bit_lens)
+            meta,
+            &main_gate_config,
+            composition_bit_lens,
+            overflow_bit_lens,
+        );
+
+        DelayEncCircuitConfig { 
+            main_gate_config, 
+            range_config,
+            rsa_config,
+        }
+    }
+
+    fn config_range<N: PrimeField> (
+        &self,
+        layouter: &mut impl Layouter<N>,
+    ) -> Result<(), Error> {
+        let range_chip = RangeChip::<N>::new(self.range_config.clone());
+        range_chip.load_table(layouter)?;
+        Ok(())
+    }
+
+}
+
 
 struct DelayEncryptCircuit<F: PrimeField , const T: usize, const RATE: usize> {
     // RSA
@@ -53,9 +91,9 @@ struct DelayEncryptCircuit<F: PrimeField , const T: usize, const RATE: usize> {
     x : BigUint,        // base integer
     _f: PhantomData<F>,
 
-    // Poseidon
-    spec: Spec<F, T, RATE>, // zeroknight : struct poseidon::Spec 
-    n_hash: usize,
+    // poseidon hash
+    spec: Spec<F, T, RATE>,
+    num: usize,
     inputs: Value<Vec<F>>,
     expected: Value<F>,
 
@@ -99,16 +137,10 @@ impl<F: PrimeField, const T: usize, const RATE: usize> Circuit<F>
             overflow_bit_lens,
         );
 
-        let bigint_config = BigIntConfig::new(range_config, main_gate_config.clone());
+        let bigint_config = BigIntConfig::new(range_config, main_gate_config);
         let rsa_config = RSAConfig::new(bigint_config);
 
-        // Poseidon Hash
-        //let main_gate_config = MainGate::<F>::configure(meta);
-
-        DelayEncCircuitConfig {
-            rsa_config,
-            main_gate_config,
-        }
+        DelayEncCircuitConfig::new::<F>(meta,rsa_config.clone())
     }
 
     fn synthesize(&self, config: Self::Config, mut layouter: impl halo2wrong::halo2::circuit::Layouter<F>) -> Result<(), halo2wrong::halo2::plonk::Error> {
@@ -163,34 +195,30 @@ impl<F: PrimeField, const T: usize, const RATE: usize> Circuit<F>
         let range_chip = bigint_chip.range_chip();
         range_chip.load_table(&mut layouter)?;
 
-        let mut main_gate = MainGate::<F>::new(config.main_gate_config.clone());
+        // === Poseidon Hash === //
+        let main_gate = MainGate::<F>::new(config.main_gate_config.clone());
+        let ecc_chip_config = config.ecc_chip_config();
+        let ecc_chip = BaseFieldEccChip::<bn256::G1Affine, NUMBER_OF_LIMBS, BIT_LEN_LIMB>::new(ecc_chip_config);    // zeroknight: only bn256
+
+        // run test against reference implementation and compare results
         layouter.assign_region(
-        || "poseidon region", 
-        |region| {
+            || "region 0", 
+        |region | {
             let offset = 0;
-            let ctx = &mut RegionCtx::new(region, offset);
-            let mut hasher_chip = HasherChip::<F, NUMBER_OF_LIMBS, BIT_LEN_LIMB, T, RATE>::new(ctx, &self.spec, &config.main_gate_config )?;
+            let ctx = &mut RegionCtx::<'_, bn256::Fr>::new(region, offset);
 
-            // inputs
-            for e in self.inputs.as_ref().transpose_vec(self.n_hash) {
-                let e = main_gate.assign_value(ctx, e.map(|v| *v))?;
-                println!("intpus_cell : {:?}", e.value());
-                hasher_chip.update(&[e.clone()]);
-            }
-            // constrain squeezing new challenge
-            let challenge = hasher_chip.hash(ctx)?;
+            let mut transcript_chip = 
+                TranscriptChip::<G1Affine, <G1Affine as CurveAffine>::ScalarExt, _, NUMBER_OF_LIMBS, BIT_LEN_LIMB, T, RATE>::new(
+                    ctx,
+                    &self.spec,
+                    ecc_chip.clone(),
+                    LimbRepresentation::default(),
+                )?;
 
-            //println!("[in circuit] inputs: {:?}",self.inputs);
-            //println!("[in circuit] challenge: {:?}", challenge.value());
-
-            let expected = main_gate.assign_value(ctx, self.expected)?;
-
-            //println!("[in circuit] expected: {:?}", expected.value());
-
-            main_gate.assert_equal(ctx, &challenge, &expected)?;
             Ok(())
+
         })?;
-        
+
         Ok(())
     }
 }
@@ -209,48 +237,31 @@ fn test_modpow_2048_circuit() {
         while n.bits() != bits_len {
             n = rng.sample(RandomBits::new(bits_len));
         }
+        println!("found!!");
         let e = rng.sample::<BigUint, _>(RandomBits::new(DelayEncryptCircuit::<F, T, RATE>::EXP_LIMB_BITS as u64)) % &n;
         let x = rng.sample::<BigUint,_>(RandomBits::new(bits_len)) % &n;
-
-        //params for Poseidon
-        let mut ref_hasher = Poseidon::<F, T, RATE>::new(8, 57);
-        // Given number of round parameters constructs new Posedion instance calculating unoptimized round constants with reference Grain then calculates optimized constants and sparse matrices
-        let spec = Spec::<F, T, RATE>::new(8, 57);
-        let inputs = (0..(3*T)).map(|_| F::random(OsRng)).collect::<Vec<F>>();
-        ref_hasher.update(&inputs[..]);
-        let expected = ref_hasher.squeeze();
-        //println!("inputs: {:?}",inputs);
-        //println!("expected: {:?}", expected);
-
         let circuit = DelayEncryptCircuit::<F, T, RATE> {
             n,
             e,
             x,
             _f: PhantomData,
-            // poseidon
-            spec: spec.clone(), // zeroknight : struct poseidon::Spec 
-            n_hash: 3*T,
-            inputs: Value::known(inputs),
-            expected: Value::known(expected),
+            spec: todo!(),
         };
 
         let public_inputs = vec![vec![]];
-        mock_prover_verify(&circuit, public_inputs);
-        /*
-        let k = 30; //17
+        let k = 17;
         let prover = match MockProver::run(k, &circuit, public_inputs) {
             Ok(prover) => prover,
             Err(e) => panic!("{:#?}", e)
         };
         assert_eq!(prover.verify().is_err(), false);
-        */
     }
 
     //run with different curves
-    use halo2wrong::curves::bn256::Fr as BnFq;
+    use halo2wrong::curves::bn256::Fq as BnFq;
     use halo2wrong::curves::pasta::{Fp as PastaFp, Fq as PastaFq};
-    run::<BnFq, 3, 2>();
-    //run::<PastaFp, 5, 4>();
-    //run::<PastaFq, 5, 4>();
+    run::<BnFq, 5, 4>();
+//    run::<PastaFp, 5, 4>();
+//    run::<PastaFq, 5, 4>();
 
 }

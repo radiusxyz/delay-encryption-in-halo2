@@ -1,0 +1,68 @@
+pub mod big_integer;
+use std::marker::PhantomData;
+pub use big_integer::*;
+pub mod rsa;
+use halo2_gadgets::poseidon::Pow5Chip;
+use halo2wrong::halo2::{plonk::Circuit, circuit::SimpleFloorPlanner};
+pub use rsa::*;
+pub mod hash;
+pub use hash::*;
+
+pub mod poseidon;
+
+use ff::PrimeField;
+use halo2_gadgets::poseidon::{primitives::Spec, Pow5Config};
+use halo2::circuit::Value;
+
+use halo2wrong::halo2::circuit::Layouter;
+use halo2wrong::halo2::plonk::Error;
+use halo2wrong::halo2::plonk::ConstraintSystem;
+
+struct HashCircuit<F: PrimeField, S, const WIDTH: usize, const RATE: usize, const L: usize, >
+    where S: Spec<F, WIDTH, RATE>
+{
+    message: Value<[F;L]>,
+    output: Value<F>,
+    _spec: PhantomData<S>,
+}
+
+impl<F: PrimeField, S, const WIDTH: usize, const RATE: usize, const L: usize>
+    Circuit<F> for HashCircuit<F, S, WIDTH, RATE, L>
+    where S: Spec<F, WIDTH, RATE>
+{
+    type Config = Pow5Config<F, WIDTH, RATE>;
+    type FloorPlanner = SimpleFloorPlanner;
+
+    fn without_witnesses(&self) -> Self {
+        Self {
+            message: Value::unknown(),
+            output: Value::unknown(),
+            _spec: PhantomData,
+        }
+    }
+
+    fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+        let state = (0..WIDTH).map(|_| meta.advice_column()).collect::<Vec<_>>();
+        let partial_sbox = meta.advice_column();
+
+        let rc_a = (0..WIDTH).map(|_| meta.fixed_column()).collect::<Vec<_>>();
+        let rc_b = (0..WIDTH).map(|_| meta.fixed_column()).collect::<Vec<_>>();
+
+        meta.enable_constant(rc_b[0]);
+
+        todo!()
+
+        /*
+        Pow5Chip::configure::<S>(// meta, state, partial_sbox, rc_a, rc_b)
+            meta,
+            state.try_into().unwrap(),
+
+        )
+        */
+    }
+
+    fn synthesize(&self, config: Self::Config, layouter: impl Layouter<F>) -> Result<(), Error> {
+        todo!()
+    }
+}
+ 

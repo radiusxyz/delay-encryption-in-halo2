@@ -7,7 +7,7 @@ use std::marker::PhantomData;
 
 use ff::FromUniformBytes;
 use ff::PrimeField;
-use halo2_proofs::arithmetic::Field;
+use halo2wrong::halo2::arithmetic::Field;
 
 pub(crate) mod fp;
 pub(crate) mod fq;
@@ -388,7 +388,7 @@ impl<F: PrimeField, S: Spec<F, T, RATE>, const T: usize, const RATE: usize, cons
 mod tests {
     use super::{permute, ConstantLength, Hash, P128Pow5T3 as OrchardNullifier, Spec};
     use ff::PrimeField;
-    use halo2curves::pasta::pallas;
+    use halo2wrong::curves::pasta::pallas;
 
     #[test]
     fn orchard_spec_equivalence() {

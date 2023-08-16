@@ -1,5 +1,5 @@
-use halo2_proofs::arithmetic::Field;
-use halo2curves::pasta::{pallas::Base as Fp, vesta::Base as Fq};
+use halo2wrong::halo2::arithmetic::Field;
+use halo2wrong::curves::pasta::{pallas::Base as Fp, vesta::Base as Fq};
 
 use super::{Mds, Spec};
 
@@ -70,8 +70,7 @@ mod tests {
         super::{fp, fq},
         Fp, Fq,
     };
-    //-- use crate::poseidon::primitives::{
-    use crate::poseidon::gadget::primitives::{
+    use crate::poseidon::primitives::{
         generate_constants, permute, ConstantLength, Hash, Mds, Spec,
     };
     use ff::PrimeField;
@@ -257,8 +256,7 @@ mod tests {
         {
             let (round_constants, mds, _) = super::P128Pow5T3::constants();
 
-            //-- for tv in crate::poseidon::primitives::test_vectors::fp::permute() {
-            for tv in crate::poseidon::gadget::primitives::test_vectors::fp::permute() {
+            for tv in crate::poseidon::primitives::test_vectors::fp::permute() {
                 let mut state = [
                     Fp::from_repr(tv.initial_state[0]).unwrap(),
                     Fp::from_repr(tv.initial_state[1]).unwrap(),
@@ -276,8 +274,7 @@ mod tests {
         {
             let (round_constants, mds, _) = super::P128Pow5T3::constants();
 
-            //-- for tv in crate::poseidon::primitives::test_vectors::fq::permute() {
-            for tv in crate::poseidon::gadget::primitives::test_vectors::fq::permute() {
+            for tv in crate::poseidon::primitives::test_vectors::fq::permute() {
                 let mut state = [
                     Fq::from_repr(tv.initial_state[0]).unwrap(),
                     Fq::from_repr(tv.initial_state[1]).unwrap(),
@@ -295,8 +292,7 @@ mod tests {
 
     #[test]
     fn hash_test_vectors() {
-        //-- for tv in crate::poseidon::primitives::test_vectors::fp::hash() {
-        for tv in crate::poseidon::gadget::primitives::test_vectors::fp::hash() {
+        for tv in crate::poseidon::primitives::test_vectors::fp::hash() {
             let message = [
                 Fp::from_repr(tv.input[0]).unwrap(),
                 Fp::from_repr(tv.input[1]).unwrap(),
@@ -308,8 +304,7 @@ mod tests {
             assert_eq!(result.to_repr(), tv.output);
         }
 
-        //-- for tv in crate::poseidon::primitives::test_vectors::fq::hash() {
-        for tv in crate::poseidon::gadget::primitives::test_vectors::fq::hash() {
+        for tv in crate::poseidon::primitives::test_vectors::fq::hash() {
             let message = [
                 Fq::from_repr(tv.input[0]).unwrap(),
                 Fq::from_repr(tv.input[1]).unwrap(),

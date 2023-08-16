@@ -1,11 +1,11 @@
 use crate::{
     AssignedInteger, AssignedRSAPublicKey, AssignedRSASignature, Fresh, RSAPublicKey, RSASignature,
 };
-use halo2wrong::halo2::{arithmetic::FieldExt, plonk::Error};
+use halo2wrong::halo2::{arithmetic::Field, plonk::Error};
 use maingate::{AssignedValue, RegionCtx};
 
 /// Instructions for RSA operations.
-pub trait RSAInstructions<F: FieldExt> {
+pub trait RSAInstructions<F: Field> {
     /// Assigns a [`AssignedRSAPublicKey`].
     fn assign_public_key(
         &self,

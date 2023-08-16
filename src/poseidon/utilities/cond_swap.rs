@@ -2,7 +2,7 @@
 
 use super::{bool_check, ternary, UtilitiesInstructions};
 use ff::{Field, PrimeField};
-use halo2_proofs::{
+use halo2wrong::halo2::{
     circuit::{AssignedCell, Chip, Layouter, Value},
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Selector},
     poly::Rotation,
@@ -197,12 +197,12 @@ mod tests {
     use super::{CondSwapChip, CondSwapConfig, CondSwapInstructions};
     use ff::PrimeField;
     use group::ff::Field;
-    use halo2_proofs::{
+    use halo2wrong::halo2::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem, Error},
     };
-    use halo2curves::pasta::pallas::Base;
+    use halo2wrong::curves::pasta::pallas::Base;
     use rand::rngs::OsRng;
 
     #[test]

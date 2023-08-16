@@ -4,13 +4,16 @@ use crate::{
     AssignedInteger, AssignedLimb, BigIntInstructions, Fresh, Muled, RangeType, RefreshAux,
     UnassignedInteger,
 };
-use halo2wrong::halo2::{arithmetic::FieldExt, circuit::Value, plonk::Error};
+use halo2wrong::halo2::{arithmetic::Field, circuit::Value, plonk::Error};
 use maingate::{
     big_to_fe, decompose_big, fe_to_big, AssignedValue, MainGate, MainGateConfig,
     MainGateInstructions, RangeChip, RangeConfig, RangeInstructions, RegionCtx,
 };
 
 use num_bigint::BigUint;
+
+// zeroknight
+use ff::PrimeField;
 
 /// Configuration for [`BigIntChip`].
 #[derive(Clone, Debug)]
@@ -40,7 +43,7 @@ impl BigIntConfig {
 
 /// Chip for [`BigIntInstructions`].
 #[derive(Debug, Clone)]
-pub struct BigIntChip<F: FieldExt> {
+pub struct BigIntChip<F: PrimeField> {
     /// Chip configuration.
     config: BigIntConfig,
     /// The width of each limb of the [`Fresh`] type integer in this chip. That is, the limb is an `limb_width`-bits integer.
@@ -50,7 +53,7 @@ pub struct BigIntChip<F: FieldExt> {
     _f: PhantomData<F>,
 }
 
-impl<F: FieldExt> BigIntInstructions<F> for BigIntChip<F> {
+impl<F: PrimeField> BigIntInstructions<F> for BigIntChip<F> {
     /// Assigns a variable [`AssignedInteger`] whose [`RangeType`] is [`Fresh`].
     ///
     /// # Arguments
@@ -182,7 +185,7 @@ impl<F: FieldExt> BigIntInstructions<F> for BigIntChip<F> {
         let num_limbs_fresh = increased_limbs_vec.len();
 
         let main_gate = self.main_gate();
-        let zero_val = main_gate.assign_constant(ctx, F::zero())?;
+        let zero_val = main_gate.assign_constant(ctx, F::ZERO)?;
         let mut refreshed_limbs = Vec::with_capacity(num_limbs_fresh);
         for i in 0..a.num_limbs() {
             refreshed_limbs.push(a.limb(i));
@@ -256,7 +259,7 @@ impl<F: FieldExt> BigIntInstructions<F> for BigIntChip<F> {
         let range_chip = self.range_chip();
 
         // Align the number of limbs of `a` and `b` by padding with `zero_value`.
-        let zero_value = main_gate.assign_constant(ctx, F::zero())?;
+        let zero_value = main_gate.assign_constant(ctx, F::ZERO)?;
         let mut a = a.clone();
         a.extend_limbs(max_n - n1, zero_value.clone());
         let mut b = b.clone();
@@ -323,7 +326,7 @@ impl<F: FieldExt> BigIntInstructions<F> for BigIntChip<F> {
         let inflated_subed = self.sub_unchecked(ctx, &inflated_a, b)?;
 
         let main_gate = self.main_gate();
-        let one = main_gate.assign_bit(ctx, Value::known(F::one()))?;
+        let one = main_gate.assign_bit(ctx, Value::known(F::ONE))?;
 
         // Determine if `a - b` is overflowed by checking the `b.num_limbs()`-th limb of `inflated_subed`.
         // If the limb is equal to one, no overflow is occurring because it implies `(a + max - b) >= max <=> a - b >= 0`.
@@ -336,7 +339,7 @@ impl<F: FieldExt> BigIntInstructions<F> for BigIntChip<F> {
         } else {
             n2
         };
-        let zero_value = self.main_gate().assign_constant(ctx, F::zero())?;
+        let zero_value = self.main_gate().assign_constant(ctx, F::ZERO)?;
 
         // If `is_not_overflowed=1`, compute `inflated_subed - max_int = a - b`.
         // Otherwise, compute `b - a`.
@@ -463,7 +466,7 @@ impl<F: FieldExt> BigIntInstructions<F> for BigIntChip<F> {
         // The number of limbs of `subed` is `added.num_limbs() = max(a.num_limbs(), b.num_limbs()) + 1`.
         let (subed, is_overflowed) = self.sub(ctx, &added, n)?;
         let num_limbs = subed.num_limbs();
-        let zero_value = self.main_gate().assign_constant(ctx, F::zero())?;
+        let zero_value = self.main_gate().assign_constant(ctx, F::ZERO)?;
         added.extend_limbs(num_limbs - added.num_limbs(), zero_value.clone());
         let mut res_limbs = Vec::with_capacity(num_limbs);
         for i in 0..num_limbs {
@@ -509,7 +512,7 @@ impl<F: FieldExt> BigIntInstructions<F> for BigIntChip<F> {
         let (subed2, is_overflowed2) = self.sub(ctx, n, &subed1)?;
         self.main_gate().assert_zero(ctx, &is_overflowed2)?;
         let num_limbs = subed2.num_limbs();
-        let zero_value = self.main_gate().assign_constant(ctx, F::zero())?;
+        let zero_value = self.main_gate().assign_constant(ctx, F::ZERO)?;
         subed1.extend_limbs(num_limbs - subed1.num_limbs(), zero_value.clone());
         //subed2.extend_limbs(num_limbs - subed2.num_limbs(), zero_value);
         let mut res_limbs = Vec::with_capacity(num_limbs);
@@ -731,7 +734,7 @@ impl<F: FieldExt> BigIntInstructions<F> for BigIntChip<F> {
         for e_bit in e_bits.into_iter() {
             let cur_sq = squared;
             // Square `squared`.
-            squared = self.square_mod(ctx, &cur_sq, n)?;
+            squared = self.square_mod(ctx, &cur_sq, n)?;   // zeroknight : add reference
             if !e_bit {
                 continue;
             }
@@ -758,7 +761,7 @@ impl<F: FieldExt> BigIntInstructions<F> for BigIntChip<F> {
     ) -> Result<AssignedValue<F>, Error> {
         let main_gate = self.main_gate();
         // If all of the limbs of `a` are zero, `assigned_bit` is one. Otherwise, `assigned_bit` is zero.
-        let mut assigned_bit = main_gate.assign_bit(ctx, Value::known(F::one()))?;
+        let mut assigned_bit = main_gate.assign_bit(ctx, Value::known(F::ONE))?;
         for limb in a.limbs().into_iter() {
             let is_zero = main_gate.is_zero(ctx, &limb.assigned_val())?;
             assigned_bit = main_gate.and(ctx, &assigned_bit, &is_zero)?;
@@ -788,7 +791,7 @@ impl<F: FieldExt> BigIntInstructions<F> for BigIntChip<F> {
         let is_a_larger = n1 > n2;
         let max_n = if is_a_larger { n1 } else { n2 };
         let main_gate = self.main_gate();
-        let mut eq_bit = main_gate.assign_bit(ctx, Value::known(F::one()))?;
+        let mut eq_bit = main_gate.assign_bit(ctx, Value::known(F::ONE))?;
         for i in 0..max_n {
             // If `i >= n1` or `i >= n1`, `i`-th limb value of the larger integer should be zero.
             // Otherwise, their `i`-th limb value should be the same.
@@ -849,11 +852,11 @@ impl<F: FieldExt> BigIntInstructions<F> for BigIntChip<F> {
         // but this doesn't work because early sums might be negative.
         // So instead we verify that `a - b + word_max = word_max`.
         let limb_max = main_gate.assign_constant(ctx, F::from_u128(1 << limb_width))?;
-        let mut accumulated_extra = main_gate.assign_constant(ctx, F::zero())?;
+        let mut accumulated_extra = main_gate.assign_constant(ctx, F::ZERO)?;
         let mut carry = Vec::with_capacity(num_limbs);
         let mut cs = Vec::with_capacity(num_limbs);
-        carry.push(main_gate.assign_constant(ctx, F::zero())?);
-        let mut eq_bit = main_gate.assign_bit(ctx, Value::known(F::one()))?;
+        carry.push(main_gate.assign_constant(ctx, F::ZERO)?);
+        let mut eq_bit = main_gate.assign_bit(ctx, Value::known(F::ONE))?;
         for i in 0..num_limbs {
             // `sum = a + b + word_max`
             let a_b = main_gate.sub(ctx, &a.limb(i), &b.limb(i))?;
@@ -1158,7 +1161,8 @@ impl<F: FieldExt> BigIntInstructions<F> for BigIntChip<F> {
     }
 }
 
-impl<F: FieldExt> BigIntChip<F> {
+// zeroknight - use ff::Primefield 
+impl<F: PrimeField> BigIntChip<F> {
     /// The number of lookup column used in the [`RangeChip`].
     pub(crate) const NUM_LOOKUP_LIMBS: usize = 8;
 
@@ -1273,7 +1277,7 @@ impl<F: FieldExt> BigIntChip<F> {
             let assigned = main_gate.assign_constant(ctx, *limb)?;
             assigned_limbs.push(AssignedLimb::from(assigned));
         }
-        let zero = AssignedLimb::<F, T>::from(self.main_gate().assign_constant(ctx, F::zero())?);
+        let zero = AssignedLimb::<F, T>::from(self.main_gate().assign_constant(ctx, F::ZERO)?);
         for _ in 0..(max_num_limbs - num_limbs) {
             assigned_limbs.push(zero.clone());
         }
@@ -1376,6 +1380,9 @@ impl<F: FieldExt> BigIntChip<F> {
 mod test {
     use std::str::FromStr;
 
+    //zeroknight
+    use ff::FromUniformBytes;
+
     use super::*;
     use crate::big_pow_mod;
     use halo2wrong::halo2::{
@@ -1385,14 +1392,14 @@ mod test {
 
     macro_rules! impl_bigint_test_circuit {
         ($circuit_name:ident, $test_fn_name:ident, $limb_width:expr, $bits_len:expr, $should_be_error:expr, $( $synth:tt )*) => {
-            struct $circuit_name<F: FieldExt> {
+            struct $circuit_name<F: Field> {
                 a: BigUint,
                 b: BigUint,
                 n: BigUint,
                 _f: PhantomData<F>,
             }
 
-            impl<F: FieldExt> $circuit_name<F> {
+            impl<F: PrimeField> $circuit_name<F> {
                 const LIMB_WIDTH: usize = $limb_width;
                 const BITS_LEN: usize = $bits_len;
                 fn bigint_chip(&self, config: BigIntConfig) -> BigIntChip<F> {
@@ -1400,7 +1407,7 @@ mod test {
                 }
             }
 
-            impl<F: FieldExt> Circuit<F> for $circuit_name<F> {
+            impl<F: PrimeField> Circuit<F> for $circuit_name<F> {
                 type Config = BigIntConfig;
                 type FloorPlanner = SimpleFloorPlanner;
 
@@ -1433,7 +1440,7 @@ mod test {
                 use halo2wrong::halo2::dev::MockProver;
                 use num_bigint::RandomBits;
                 use rand::{thread_rng, Rng};
-                fn run<F: FieldExt>() {
+                fn run<F: FromUniformBytes<64> + Ord>() {       // // zeroknight - use FromUnionFormBytes instead of PrimeField
                     let mut rng = thread_rng();
                     let bits_len = $circuit_name::<F>::BITS_LEN as u64;
                     let mut n = BigUint::default();
@@ -1448,14 +1455,16 @@ mod test {
                         n,
                         _f: PhantomData,
                     };
-
+                      
                     let public_inputs = vec![vec![]];
                     let k = 16;
+                    
                     let prover = match MockProver::run(k, &circuit, public_inputs) {
                         Ok(prover) => prover,
                         Err(e) => panic!("{:#?}", e)
                     };
                     assert_eq!(prover.verify().is_err(), $should_be_error);
+                    
                 }
 
                 use halo2wrong::curves::bn256::Fq as BnFq;
@@ -2815,7 +2824,7 @@ mod test {
                     let n = one.num_limbs();
                     let one_muled = bigint_chip.mul(ctx, &one, &one)?;
                     let zero = AssignedLimb::from(
-                        bigint_chip.main_gate().assign_constant(ctx, F::zero())?,
+                        bigint_chip.main_gate().assign_constant(ctx, F::ZERO)?,
                     );
                     bigint_chip.assert_equal_muled(ctx, &one.to_muled(zero), &one_muled, n, n)?;
                     Ok(())

@@ -1,20 +1,12 @@
-//! This library provides a RSA verification circuit compatible with the [halo2 library developed by privacy-scaling-explorations team](https://github.com/privacy-scaling-explorations/halo2).
-//!
-//! A chip in this library, [`RSAChip`], defines constraints for verifying the RSA relations, specifically modular power `x^e mod n` and [pkcs1v15 signature](https://www.rfc-editor.org/rfc/rfc3447) verification.
-//! Its circuit configuration differs depending on whether the exponent parameter `e` of the RSA public key is variable or fixed.
-//! For example, since `e` is often fixed to `65537` in the case of pkcs1v15 signature verification, defining `e` as a fixed parameter [`RSAPubE::Fix`] can optimize the number of constraints.
-//!
-//! In addition to [`RSAChip`], this library also provides a high-level circuit implementation to verify pkcs1v15 signatures, [`RSASignatureVerifier`].  
-//! The verification function in [`RSAChip`] requires as input a hashed message, whereas the function in [`RSASignatureVerifier`] computes a SHA256 hash of the given message and verifies the given signature for that hash.
+pub mod chip;
+pub use chip::*;
+pub mod instructions;
+pub use instructions::*;
 
-//-- unnecessary lines commented out by zeroknight with "//--"
 use crate::big_integer::*;
 
-mod chip;
-mod instructions;
-pub use chip::*;
-use halo2wrong::halo2::{arithmetic::FieldExt, circuit::Value, plonk::Error};
-pub use instructions::*;
+use halo2wrong::halo2::{arithmetic::Field, circuit::{Value, AssignedCell}, plonk::Error};
+
 use maingate::{
     big_to_fe, decompose_big, fe_to_big, AssignedValue, MainGate, MainGateConfig,
     MainGateInstructions, RangeChip, RangeConfig, RangeInstructions, RegionCtx,
@@ -23,7 +15,7 @@ use num_bigint::BigUint;
 
 /// A parameter `e` in the RSA public key that is about to be assigned.
 #[derive(Clone, Debug)]
-pub enum RSAPubE<F: FieldExt> {
+pub enum RSAPubE<F: Field> {
     /// A variable parameter `e`.
     Var(UnassignedInteger<F>),
     /// A fixed parameter `e`.
@@ -32,7 +24,7 @@ pub enum RSAPubE<F: FieldExt> {
 
 /// A parameter `e` in the assigned RSA public key.
 #[derive(Clone, Debug)]
-pub enum AssignedRSAPubE<F: FieldExt> {
+pub enum AssignedRSAPubE<F: Field> {
     /// A variable parameter `e`.
     Var(AssignedInteger<F, Fresh>),
     /// A fixed parameter `e`.
@@ -41,14 +33,14 @@ pub enum AssignedRSAPubE<F: FieldExt> {
 
 /// RSA public key that is about to be assigned.
 #[derive(Clone, Debug)]
-pub struct RSAPublicKey<F: FieldExt> {
+pub struct RSAPublicKey<F: Field> {
     /// a modulus parameter
     pub n: UnassignedInteger<F>,
     /// an exponent parameter
     pub e: RSAPubE<F>,
 }
 
-impl<F: FieldExt> RSAPublicKey<F> {
+impl<F: Field> RSAPublicKey<F> {
     /// Creates new [`RSAPublicKey`] from `n` and `e`.
     ///
     /// # Arguments
@@ -73,14 +65,14 @@ impl<F: FieldExt> RSAPublicKey<F> {
 
 /// An assigned RSA public key.
 #[derive(Clone, Debug)]
-pub struct AssignedRSAPublicKey<F: FieldExt> {
+pub struct AssignedRSAPublicKey<F: Field> {
     /// a modulus parameter
     pub n: AssignedInteger<F, Fresh>,
     /// an exponent parameter
     pub e: AssignedRSAPubE<F>,
 }
 
-impl<F: FieldExt> AssignedRSAPublicKey<F> {
+impl<F: Field> AssignedRSAPublicKey<F> {
     /// Creates new [`AssignedRSAPublicKey`] from assigned `n` and `e`.
     ///
     /// # Arguments
@@ -96,11 +88,11 @@ impl<F: FieldExt> AssignedRSAPublicKey<F> {
 
 /// RSA signature that is about to be assigned.
 #[derive(Clone, Debug)]
-pub struct RSASignature<F: FieldExt> {
+pub struct RSASignature<F: Field> {
     c: UnassignedInteger<F>,
 }
 
-impl<F: FieldExt> RSASignature<F> {
+impl<F: Field> RSASignature<F> {
     /// Creates new [`RSASignature`] from its integer.
     ///
     /// # Arguments
@@ -123,11 +115,11 @@ impl<F: FieldExt> RSASignature<F> {
 
 /// An assigned RSA signature.
 #[derive(Clone, Debug)]
-pub struct AssignedRSASignature<F: FieldExt> {
+pub struct AssignedRSASignature<F: Field> {
     c: AssignedInteger<F, Fresh>,
 }
 
-impl<F: FieldExt> AssignedRSASignature<F> {
+impl<F: Field> AssignedRSASignature<F> {
     /// Creates new [`AssignedRSASignature`] from its assigned integer.
     ///
     /// # Arguments
@@ -142,19 +134,21 @@ impl<F: FieldExt> AssignedRSASignature<F> {
 
 use halo2wrong::halo2::circuit::Layouter;
 //pub use zkevm_circuits::sha256_circuit::sha256_bit::{Sha256BitChip, Sha256BitConfig};
-//-- sha is not used here
-//-- pub use halo2_dynamic_sha256;
-//-- use halo2_dynamic_sha256::Sha256Chip;
-//-- use sha2::digest::crypto_common::KeyInit;
+// pub use halo2_dynamic_sha256;
+// use halo2_dynamic_sha256::Sha256Chip;
+//use sha2::digest::crypto_common::KeyInit;
+
+// zeroknight
+use ff::PrimeField;
 
 /// A circuit implementation to verify pkcs1v15 signatures.
 #[derive(Clone, Debug)]
-pub struct RSASignatureVerifier<F: FieldExt> {
+pub struct RSASignatureVerifier<F: PrimeField> {
     rsa_chip: RSAChip<F>,
-    //-- sha256_chip: Sha256Chip<F>,
+    //sha256_chip: Sha256Chip<F>,   // zeroknight - not support for Sha256
 }
 
-impl<F: FieldExt> RSASignatureVerifier<F> {
+impl<F: PrimeField> RSASignatureVerifier<F> {
     /// Creates new [`RSASignatureVerifier`] from [`RSAChip`] and [`Sha256BitChip`].
     ///
     /// # Arguments
@@ -163,11 +157,9 @@ impl<F: FieldExt> RSASignatureVerifier<F> {
     ///
     /// # Return values
     /// Returns new [`RSASignatureVerifier`].
-    //-- pub fn new(rsa_chip: RSAChip<F>, sha256_chip: Sha256Chip<F>) -> Self {
     pub fn new(rsa_chip: RSAChip<F>) -> Self {
         Self {
             rsa_chip,
-            //-- sha256_chip,
         }
     }
 
@@ -204,45 +196,59 @@ impl<F: FieldExt> RSASignatureVerifier<F> {
             input_byte_size_with_9, num_round, padded_size
         );*/
 
-        /* //--
-        let mut sha256 = self.sha256_chip.clone();
-        sha256.init(&mut layouter)?;
-        let inputs = msg
-            .into_iter()
-            .map(|byte| Value::known(*byte))
-            .collect::<Vec<Value<u8>>>();
-        let (digest, _) = sha256.finalize(&mut layouter, &inputs)?;
-        let mut hashed_bytes = sha256
-            .decompose_digest_to_bytes(&mut layouter, &digest)?
-            .to_vec();
-        hashed_bytes.reverse();
-        */
-
-        let limb_bytes = RSAChip::<F>::LIMB_WIDTH / 8;
         let rsa_chip = self.rsa_chip.clone();
         let main_gate = rsa_chip.main_gate();
-        // by zeroknight
-        let input = msg
+
+        let inputs = msg
                     .into_iter()
-                    .map(|byte: &u8| Value::known(*byte))
+                    .map(|byte| Value::known(*byte))
                     .collect::<Vec<Value<u8>>>();
-        let hashed_bytes = layouter.assign_region(
-            || "digest: assigned_padded_input",
-            |region | {
+        let input_byte_size = inputs.len();
+
+        const DIGEST_SIZE: usize = 8;
+
+        let digest_values = layouter.assign_region(
+            || "inputs", 
+            |region| {
                 let ctx = &mut RegionCtx::new(region, 0);
-                input
-                    .iter()
-                    .map(|val| {
-                        main_gate.assign_value(
-                            ctx, 
-                            val.map(|v| F::from_u128(v as u128)))
-                    })
-                    .collect::<Result<Vec<AssignedValue<F>>, Error>>()
-            }
-        )?;  
-        //let hashed_bytes = msg.clone(); // expected reference `&AssignedCell<F, F>`, found reference `&u8`
-        
+
+
+                let zero = main_gate.assign_constant(ctx, F::ZERO)?;
+
+                let values : [AssignedValue<F>; DIGEST_SIZE] = (0..input_byte_size)
+                        .map(|index| {
+                            main_gate.assign_value(ctx, Value::known(F::from_u128(msg[index] as u128))).unwrap()
+                        })
+                        .collect::<Vec<AssignedValue<F>>>()
+                        .try_into()
+                        .unwrap();
+
+                //let assigned_inpu_byte_size = main_gate
+                //        .assign_value(ctx, Value::known(F::from_u128(input_byte_size as u128)))?;
+                Ok(values)
+            })?;
+        /*
+        let digest_values = layouter.assign_region(
+                || "",
+                |region| {
+                    let ctx = &mut RegionCtx::new(region, 0);
+                    let zero = main_gate.assign_constant(ctx, F::ZERO)?;
+                    let mut new_digest_values: [AssignedValue<F>; DIGEST_SIZE] = (0..DIGEST_SIZE)
+                        .map(|_| zero.clone())
+                        .collect::<Vec<AssignedValue<F>>>()
+                        .try_into()
+                        .unwrap();
+                    Ok(new_digest_values)
+                }
+        )?;
+        */
+
+        //let mut hashed_bytes = vec![];  // zeroknight - todo
+        let mut hashed_bytes = digest_values.to_vec();
+        hashed_bytes.reverse();
+
         let bytes_len = hashed_bytes.len();
+        let limb_bytes = RSAChip::<F>::LIMB_WIDTH / 8;
 
         // 2. Verify `signature` with `public_key` and `hashed_bytes`.
         let is_valid = layouter.assign_region(
@@ -252,7 +258,7 @@ impl<F: FieldExt> RSASignatureVerifier<F> {
                 let ctx = &mut RegionCtx::new(region, offset);
                 let mut assigned_limbs = Vec::with_capacity(bytes_len / limb_bytes);
                 for i in 0..(bytes_len / limb_bytes) {
-                    let mut limb_val = main_gate.assign_constant(ctx, F::zero())?;
+                    let mut limb_val = main_gate.assign_constant(ctx, F::ZERO)?;
                     for j in 0..limb_bytes {
                         let coeff = main_gate
                             .assign_constant(ctx, big_to_fe(BigUint::from(1usize) << (8 * j)))?;
@@ -271,8 +277,7 @@ impl<F: FieldExt> RSASignatureVerifier<F> {
                 Ok(is_sign_valid)
             },
         )?;
-        //-- hashed_bytes.reverse();
-        
+        hashed_bytes.reverse();
         Ok((is_valid, hashed_bytes))
     }
 }
@@ -280,7 +285,6 @@ impl<F: FieldExt> RSASignatureVerifier<F> {
 #[cfg(test)]
 mod test {
     use super::*;
-    //-- use halo2_dynamic_sha256::{Sha256Config, Table16Chip};
     use halo2wrong::curves::bn256::Fr as BnFr;
     use halo2wrong::halo2::{
         circuit::SimpleFloorPlanner,
@@ -289,25 +293,27 @@ mod test {
     use num_bigint::BigUint;
     use rand::{thread_rng, Rng};
     use rsa::*;
-    //-- use sha2::{Digest, Sha256};
     use std::marker::PhantomData;
+
+    use ff::FromUniformBytes;
+
+    use sha2::{Digest, Sha256}; // zeroknight - Todo : should be removed..
 
     macro_rules! impl_rsa_signature_test_circuit {
         ($config_name:ident, $circuit_name:ident, $test_fn_name:ident, $bits_len:expr, $should_be_error:expr, $( $synth:tt )*) => {
             #[derive(Debug,Clone)]
             struct $config_name {
                 rsa_config: RSAConfig,
-                //-- sha256_config: Sha256Config
             }
 
-            struct $circuit_name<F: FieldExt> {
+            struct $circuit_name<F: Field> {
                 private_key: RsaPrivateKey,
                 public_key: RsaPublicKey,
                 msg: Vec<u8>,
                 _f: PhantomData<F>
             }
 
-            impl<F: FieldExt> $circuit_name<F> {
+            impl<F: PrimeField> $circuit_name<F> {
                 const BITS_LEN:usize = $bits_len;
                 const LIMB_WIDTH:usize = RSAChip::<F>::LIMB_WIDTH;
                 const EXP_LIMB_BITS:usize = 5;
@@ -315,13 +321,9 @@ mod test {
                 fn rsa_chip(&self, config: RSAConfig) -> RSAChip<F> {
                     RSAChip::new(config, Self::BITS_LEN,Self::EXP_LIMB_BITS)
                 }
-
-                //-- fn sha256_chip(&self, config: Sha256Config) -> Sha256Chip<F> {
-                //--    Sha256Chip::new(config)
-                //--}
             }
 
-            impl<F: FieldExt> Circuit<F> for $circuit_name<F> {
+            impl<F: PrimeField> Circuit<F> for $circuit_name<F> {
                 type Config = $config_name;
                 type FloorPlanner = SimpleFloorPlanner;
 
@@ -335,11 +337,6 @@ mod test {
                         RSAChip::<F>::compute_range_lens(
                             Self::BITS_LEN / Self::LIMB_WIDTH,
                         );
-                    
-                    //-- let (mut sha_composition_bit_lens, mut sha_overflow_bit_lens) =Sha256Chip::<F>::compute_range_lens();
-                    //-- .append(&mut sha_composition_bit_lens);
-                    //-- overflow_bit_lenscomposition_bit_lens.append(&mut sha_overflow_bit_lens);
-                    
                     let range_config = RangeChip::<F>::configure(
                         meta,
                         &main_gate_config,
@@ -348,12 +345,8 @@ mod test {
                     );
                     let bigint_config = BigIntConfig::new(range_config.clone(), main_gate_config.clone());
                     let rsa_config = RSAConfig::new(bigint_config);
-                    //-- 
-                    //-- let table16_congig = Table16Chip::configure(meta);
-                    //-- let sha256_config = Sha256Config::new(main_gate_config, range_config, table16_congig, 128+64);
                     Self::Config {
-                        rsa_config,
-                        //-- sha256_config
+                        rsa_config
                     }
                 }
 
@@ -364,7 +357,7 @@ mod test {
             #[test]
             fn $test_fn_name() {
                 use halo2wrong::halo2::dev::MockProver;
-                fn run<F: FieldExt>() {
+                fn run<F: FromUniformBytes<64> + Ord>() {
                     let mut rng = thread_rng();
                     let private_key = RsaPrivateKey::new(&mut rng, $circuit_name::<F>::BITS_LEN).expect("failed to generate a key");
                     let public_key = RsaPublicKey::from(&private_key);
@@ -373,9 +366,7 @@ mod test {
                     for i in 0..128 {
                         msg[i] = rng.gen();
                     }
-                    //-- let hashed_msg = Sha256::digest(&msg);
-                    let hashed_msg = msg.clone();
-
+                    let hashed_msg = Sha256::digest(&msg);
                     let circuit = $circuit_name::<F> {
                         private_key,
                         public_key,
@@ -405,6 +396,7 @@ mod test {
         };
     }
 
+/* // zeroknight - sha2 not supported atm..
     impl_rsa_signature_test_circuit!(
         TestRSASignatureWithHashConfig,
         TestRSASignatureWithHashCircuit,
@@ -417,8 +409,6 @@ mod test {
             mut layouter: impl halo2wrong::halo2::circuit::Layouter<F>,
         ) -> Result<(), Error> {
             let rsa_chip = self.rsa_chip(config.rsa_config);
-            //-- let sha256_chip = self.sha256_chip(config.sha256_config);
-
             let bigint_chip = rsa_chip.bigint_chip();
             let main_gate = rsa_chip.main_gate();
             let limb_width = Self::LIMB_WIDTH;
@@ -428,9 +418,7 @@ mod test {
                 |region| {
                     let offset = 0;
                     let ctx = &mut RegionCtx::new(region, offset);
-                    //-- let hashed_msg = Sha256::digest(&self.msg);
-                    let hashed_msg = self.msg.clone();
-
+                    let hashed_msg = Sha256::digest(&self.msg);
                     let padding = PaddingScheme::PKCS1v15Sign {
                         hash: Some(Hash::SHA2_256),
                     };
@@ -455,9 +443,7 @@ mod test {
                     Ok((public_key, sign))
                 },
             )?;
-            //-- let verifier = RSASignatureVerifier::new(rsa_chip, sha256_chip);
             let verifier = RSASignatureVerifier::new(rsa_chip);
-
             let (is_valid, hashed_msg) = verifier.verify_pkcs1v15_signature(
                 layouter.namespace(|| "verify pkcs1v15 signature"),
                 &public_key,
@@ -506,8 +492,6 @@ mod test {
             mut layouter: impl halo2wrong::halo2::circuit::Layouter<F>,
         ) -> Result<(), Error> {
             let rsa_chip = self.rsa_chip(config.rsa_config);
-            //-- let sha256_chip = self.sha256_chip(config.sha256_config);
-
             let bigint_chip = rsa_chip.bigint_chip();
             let main_gate = rsa_chip.main_gate();
             let range_chip = bigint_chip.range_chip();
@@ -519,9 +503,7 @@ mod test {
                 |region| {
                     let offset = 0;
                     let ctx = &mut RegionCtx::new(region, offset);
-                    //-- let hashed_msg = Sha256::digest(&self.msg);
-                    let hashed_msg = self.msg.clone();
-
+                    let hashed_msg = Sha256::digest(&self.msg);
                     let padding = PaddingScheme::PKCS1v15Sign {
                         hash: Some(Hash::SHA2_256),
                     };
@@ -546,9 +528,7 @@ mod test {
                     Ok((public_key, sign))
                 },
             )?;
-            //-- let verifier = RSASignatureVerifier::new(rsa_chip, sha256_chip);
             let verifier = RSASignatureVerifier::new(rsa_chip);
-
             let (is_valid, hashed_msg) = verifier.verify_pkcs1v15_signature(
                 layouter.namespace(|| "verify pkcs1v15 signature"),
                 &public_key,
@@ -595,8 +575,6 @@ mod test {
             mut layouter: impl halo2wrong::halo2::circuit::Layouter<F>,
         ) -> Result<(), Error> {
             let rsa_chip = self.rsa_chip(config.rsa_config);
-            //-- let sha256_chip = self.sha256_chip(config.sha256_config);
-
             let bigint_chip = rsa_chip.bigint_chip();
             let main_gate = rsa_chip.main_gate();
             let limb_width = Self::LIMB_WIDTH;
@@ -606,9 +584,7 @@ mod test {
                 |region| {
                     let offset = 0;
                     let ctx = &mut RegionCtx::new(region, offset);
-                    //-- let hashed_msg = Sha256::digest(&self.msg);
-                    let hashed_msg = self.msg.clone();
-
+                    let hashed_msg = Sha256::digest(&self.msg);
                     let padding = PaddingScheme::PKCS1v15Sign {
                         hash: Some(Hash::SHA2_256),
                     };
@@ -634,9 +610,7 @@ mod test {
                     Ok((public_key, sign))
                 },
             )?;
-            // let verifier = RSASignatureVerifier::new(rsa_chip, sha256_chip);
             let verifier = RSASignatureVerifier::new(rsa_chip);
-
             let (is_valid, hashed_msg) = verifier.verify_pkcs1v15_signature(
                 layouter.namespace(|| "verify pkcs1v15 signature"),
                 &public_key,
@@ -685,7 +659,6 @@ mod test {
             mut layouter: impl halo2wrong::halo2::circuit::Layouter<F>,
         ) -> Result<(), Error> {
             let rsa_chip = self.rsa_chip(config.rsa_config);
-            //-- let sha256_chip = self.sha256_chip(config.sha256_config);
             let bigint_chip = rsa_chip.bigint_chip();
             let main_gate = rsa_chip.main_gate();
             let limb_width = Self::LIMB_WIDTH;
@@ -720,9 +693,7 @@ mod test {
                     Ok((public_key, sign))
                 },
             )?;
-            //-- let verifier = RSASignatureVerifier::new(rsa_chip, sha256_chip);
             let verifier = RSASignatureVerifier::new(rsa_chip);
-
             let (is_valid, hashed_msg) = verifier.verify_pkcs1v15_signature(
                 layouter.namespace(|| "verify pkcs1v15 signature"),
                 &public_key,
@@ -758,6 +729,7 @@ mod test {
             Ok(())
         }
     );
+    */
 
     impl_rsa_signature_test_circuit!(
         TestDeriveTraitsConfig,
@@ -773,7 +745,6 @@ mod test {
             let config = config.clone();
             format!("{config:?}");
             let rsa_chip = self.rsa_chip(config.rsa_config);
-            //-- let sha256_chip = self.sha256_chip(config.sha256_config);
             let bigint_chip = rsa_chip.bigint_chip();
             let limb_width = Self::LIMB_WIDTH;
             let num_limbs = Self::BITS_LEN / Self::LIMB_WIDTH;
@@ -782,9 +753,7 @@ mod test {
                 |region| {
                     let offset = 0;
                     let ctx = &mut RegionCtx::new(region, offset);
-                    //-- let hashed_msg = Sha256::digest(&self.msg);
-                    let hashed_msg = self.msg.clone();
-
+                    let hashed_msg = Sha256::digest(&self.msg);
                     let padding = PaddingScheme::PKCS1v15Sign {
                         hash: Some(Hash::SHA2_256),
                     };
@@ -813,7 +782,6 @@ mod test {
                     Ok((public_key, sign))
                 },
             )?;
-            //-- let verifier = RSASignatureVerifier::new(rsa_chip, sha256_chip).clone();
             let verifier = RSASignatureVerifier::new(rsa_chip).clone();
             format!("{verifier:?}");
             let range_chip = bigint_chip.range_chip();
@@ -836,6 +804,7 @@ mod test {
             Ok(())
         }
     );
+    
 
     /*#[test]
     #[should_panic]

@@ -1,7 +1,7 @@
 use std::convert::TryInto;
 use std::iter;
 
-use halo2_proofs::{
+use halo2wrong::halo2::{
     arithmetic::Field,
     circuit::{AssignedCell, Cell, Chip, Layouter, Region, Value},
     plonk::{
@@ -11,12 +11,10 @@ use halo2_proofs::{
 };
 
 use super::{
-    primitives::{Absorbing, Domain, Mds, Spec, Squeezing, State}, 
-    //-- PaddedWord, PoseidonInstructions, PoseidonSpongeInstructions,
-    poseidon::{PaddedWord, PoseidonInstructions,PoseidonSpongeInstructions}, 
+    primitives::{Absorbing, Domain, Mds, Spec, Squeezing, State},
+    PaddedWord, PoseidonInstructions, PoseidonSpongeInstructions,
 };
 
-//-- use crate::utilities::Var;
 use super::utilities::Var;
 
 /// Configuration for a [`Pow5Chip`].
@@ -126,7 +124,7 @@ impl<F: Field, const WIDTH: usize, const RATE: usize> Pow5Chip<F, WIDTH, RATE> {
 
             let s_partial = meta.query_selector(s_partial);
 
-            use halo2_proofs::plonk::VirtualCells;
+            use halo2wrong::halo2::plonk::VirtualCells;
             let mid = |idx: usize, meta: &mut VirtualCells<F>| {
                 let mid = mid_0.clone() * m_reg[idx][0];
                 (1..WIDTH).fold(mid, |acc, cur_idx| {
@@ -598,26 +596,20 @@ impl<F: Field, const WIDTH: usize> Pow5State<F, WIDTH> {
 #[cfg(test)]
 mod tests {
     use group::ff::{Field, PrimeField};
-    use halo2_proofs::{
+
+    use halo2wrong::halo2::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem, Error},
     };
-    use halo2curves::pasta::{pallas, Fp};
+    use halo2wrong::curves::pasta::{pallas, Fp};
     use rand::rngs::OsRng;
 
     use super::{PoseidonInstructions, Pow5Chip, Pow5Config, StateWord};
-    
-    //-- use crate::poseidon::{
-    //--     primitives::{self as poseidon, ConstantLength, P128Pow5T3 as OrchardNullifier, Spec},
-    //--     Hash,
-    //-- };
-
     use crate::poseidon::{
-        gadget::primitives::{self as poseidon, ConstantLength, P128Pow5T3 as OrchardNullifier, Spec},
-        gadget::poseidon::Hash,
+        primitives::{self as poseidon, ConstantLength, P128Pow5T3 as OrchardNullifier, Spec},
+        Hash,
     };
-
     use std::convert::TryInto;
     use std::marker::PhantomData;
 
@@ -860,8 +852,7 @@ mod tests {
 
     #[test]
     fn hash_test_vectors() {
-        //-- for tv in crate::poseidon::primitives::test_vectors::fp::hash() {
-        for tv in crate::poseidon::gadget::primitives::test_vectors::fp::hash() {
+        for tv in crate::poseidon::primitives::test_vectors::fp::hash() {
             let message = [
                 pallas::Base::from_repr(tv.input[0]).unwrap(),
                 pallas::Base::from_repr(tv.input[1]).unwrap(),
