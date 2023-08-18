@@ -14,6 +14,8 @@ pub use hash::*;
 pub mod poseidon;
 pub use poseidon::*;
 
+pub mod encryption;
+
 use ff::{PrimeField, FromUniformBytes};
 use num_bigint::{BigUint, RandomBits};
 
@@ -190,6 +192,9 @@ impl<F: PrimeField, const T: usize, const RATE: usize> Circuit<F>
             main_gate.assert_equal(ctx, &challenge, &expected)?;
             Ok(())
         })?;
+
+        // Poseidon Encryption
+
         
         Ok(())
     }
