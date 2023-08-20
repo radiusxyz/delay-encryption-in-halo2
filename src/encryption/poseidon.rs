@@ -43,7 +43,7 @@ impl<F, const r_f: usize, const r_p: usize, const T: usize, const RATE:usize> Po
         CIPHER_SIZE
     }
 
-    fn initial_state(key: &PoseidonCipherKey<F>, nonce: F) -> [F; 5]  {   // zeroknight : 5?!
+    pub fn initial_state(key: &PoseidonCipherKey<F>, nonce: F) -> [F; 5]  {   // zeroknight : 5?!
         [
             // Domain - Maximum plaintext length of the elements of Fq, as defined
             F::from_u128(0x100000000 as u128),

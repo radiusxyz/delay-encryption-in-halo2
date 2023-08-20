@@ -2,15 +2,17 @@ use std::marker::PhantomData;
 
 use ff::{PrimeField, FromUniformBytes};
 use halo2wrong::RegionCtx;
-use maingate::{MainGateConfig, decompose_big};
+use maingate::{MainGateConfig, decompose_big, MainGateInstructions};
 use num_bigint::BigUint;
 use poseidon::Spec;
 
 use halo2wrong::halo2::plonk::Error;
 
-use crate::{RSAConfig, RSAChip, hasher::HasherChip, AssignedInteger, Fresh, AssignedRSAPublicKey, UnassignedInteger, RSAPubE, RSAPublicKey, RSAInstructions, BigIntInstructions, big_pow_mod};
+use crate::{RSAConfig, RSAChip, hasher::HasherChip, AssignedInteger, Fresh, AssignedRSAPublicKey, UnassignedInteger, RSAPubE, RSAPublicKey, RSAInstructions, BigIntInstructions, big_pow_mod, encryption::poseidon::{PoseidonCipher, MESSAGE_CAPACITY}};
 
 use super::{PoseidonCipherInstructions, poseidon::{CIPHER_SIZE, PoseidonCipherKey}};
+
+use halo2wrong::halo2::circuit::Value;
 
 
 #[derive(Clone, Debug)]
@@ -39,6 +41,7 @@ pub struct PoseidonCipherChip<
     // Chip configuration
     config: PoseidonCipherConfig,
     spec: Spec<F, T, RATE>,
+    n_hash: usize,
     _data: PhantomData<F>, 
 
 }
@@ -59,16 +62,19 @@ impl<
     // Constant value for Poseidon Hash chip
     const DEFAULT_E: u128 = 65537;
     const LIMB_WIDTH_RSA: usize = RSAChip::<F>::LIMB_WIDTH; // 64
+    const R_F : usize = 8;
+    const R_P : usize = 57;
 
     // create a new PoseidonCipherChip from the configuration and parameters
     // Arguments
     // config - a configuration for PoseidonCipherChip
     // ??!! 
-    fn new(config: PoseidonCipherConfig) -> Self {
+    fn new(config: PoseidonCipherConfig, n_hash: usize) -> Self {
         let spec = Spec::<F, T, RATE>::new(config.r_f, config.r_p);
         PoseidonCipherChip {
             config,
             spec,
+            n_hash,
             _data: PhantomData,
         }
     }
@@ -166,19 +172,80 @@ impl<
 
         Ok(valid_powed_var) // zeroknight - mean anything?!
     }
+/*
+    fn initial_state(
+        &self,
+        ctx: &mut RegionCtx<'_, F>,
+        key: &PoseidonCipherKey<F>,
+        nonce: F,
+    ) -> Result<Vec<F>, Error> {
+        /* [
+            // Domain - Maximum plaintext length of the elements of Fq, as defined
+            F::from_u128(0x100000000 as u128),
+            F::from_u128(MESSAGE_CAPACITY as u128),
+            self.cipherKey.key0,
+            self.cipherKey.key1,
+            nonce,
+        ] */
+        vec![
 
+        ]
+    }
+*/
     fn encrypt_message(
         &self,
         ctx: &mut RegionCtx<'_, F>,
+        n_hash: usize, 
         key: &PoseidonCipherKey<F>, 
-        message: &[F],                      // zeroknight - todo : wrap as a specific type
-    ) -> Result<[F; CIPHER_SIZE ], Error> {
+        nonce: F,
+        message: &Vec<F>,                      // zeroknight - todo : wrap as a specific type
+    ) -> Result<Vec<F>, Error> {
 
+        
         let mut hasher_chip = HasherChip::<F, NUMBER_OF_LIMBS_HASH, BITS_LEN_HASH, T, RATE>::new(
             ctx,
             &self.spec,
             &self.config.main_gate_config
         )?;
+        let mut main_gate = hasher_chip.main_gate();
+
+        // initial state
+        // fn initial_state(key: &PoseidonCipherKey<F>, nonce: F) -> [F; 5]
+        let mut state = PoseidonCipher::<F, 8, 57, T, RATE>::initial_state(key, nonce);
+        for e in state {
+            let e = main_gate.assign_value(ctx, Value::known(e))?;
+            hasher_chip.update(&[e.clone()]);
+        }
+
+        // permutation on inputs
+        let mut message_cells = vec![];
+        let inputs = Value::known(message.clone());
+        for e in inputs.as_ref().transpose_vec(self.n_hash) {
+            let e = main_gate.assign_value(ctx, e.map(|v| *v))?;
+            message_cells.push(e.clone());
+            hasher_chip.update(&[e.clone()]);
+        }
+
+        (0..MESSAGE_CAPACITY).for_each(|i|{
+
+            if i < message.len() {
+                // state[i+1] += message[i]
+            } else {
+                // state[i+1] += F::ZERO
+            }
+
+            // cipher[i] = state[i+1];
+
+        });
+
+        /*
+        // Poseidon Hash on inputs
+        let inputs = Value::known(message.clone());
+        for e in inputs.as_ref().transpose_vec(self.n_hash) {
+            let e = main_gate.assign_value(ctx, e.map(|v| *v))?;
+            hasher_chip.update(&[e.clone()]);
+        }
+        */
 
         unimplemented!()
     }

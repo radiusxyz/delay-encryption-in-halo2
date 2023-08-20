@@ -21,7 +21,9 @@ pub trait PoseidonCipherInstructions<F: PrimeField> {
     fn encrypt_message(
         &self,
         ctx: &mut RegionCtx<'_, F>,
+        n_hash: usize,
         key: &PoseidonCipherKey<F>, 
-        message: &[F],                      // zeroknight - todo : wrap as a specific type
-    ) -> Result<[F; CIPHER_SIZE ], Error>;
+        nonce: F,
+        message: &Vec<F>,                      // zeroknight - todo : wrap as a specific type
+    ) -> Result<Vec<F>, Error>;
 }
