@@ -1,14 +1,21 @@
 use std::marker::PhantomData;
 
 use ff::{PrimeField, FromUniformBytes};
-use halo2wrong::RegionCtx;
-use maingate::{MainGateConfig, decompose_big, MainGateInstructions};
-use num_bigint::BigUint;
+
+use halo2wrong::{halo2::{ 
+    plonk::{Circuit, ConstraintSystem},
+    circuit::{SimpleFloorPlanner, Layouter, Chip},
+}, RegionCtx, curves::{CurveAffine, bn256::{self, G1Affine}}};
+
+use maingate::{MainGateConfig, decompose_big, MainGateInstructions, MainGate, RangeChip, mock_prover_verify};
+use num_bigint::{BigUint, RandomBits};
 use poseidon::Spec;
 
 use halo2wrong::halo2::plonk::Error;
+use rand_core::OsRng;
+//use proptest::bits::usize;
 
-use crate::{RSAConfig, RSAChip, hasher::HasherChip, AssignedInteger, Fresh, AssignedRSAPublicKey, UnassignedInteger, RSAPubE, RSAPublicKey, RSAInstructions, BigIntInstructions, big_pow_mod, encryption::poseidon::{PoseidonCipher, MESSAGE_CAPACITY}};
+use crate::{RSAConfig, RSAChip, hasher::HasherChip, AssignedInteger, Fresh, AssignedRSAPublicKey, UnassignedInteger, RSAPubE, RSAPublicKey, RSAInstructions, BigIntInstructions, big_pow_mod, encryption::poseidon::{PoseidonCipher, MESSAGE_CAPACITY}, BigIntConfig};
 
 use super::{PoseidonCipherInstructions, poseidon::{CIPHER_SIZE, PoseidonCipherKey}};
 
@@ -17,15 +24,13 @@ use halo2wrong::halo2::circuit::Value;
 
 #[derive(Clone, Debug)]
 pub struct PoseidonCipherConfig {
-    rsa_config: RSAConfig,
-    main_gate_config: MainGateConfig,
-    r_f: usize,
-    r_p: usize,
+    pub rsa_config: RSAConfig,
+    pub main_gate_config: MainGateConfig,
 }
 
 impl PoseidonCipherConfig {
-    pub fn new(rsa_config: RSAConfig, main_gate_config: MainGateConfig, r_f: usize, r_p: usize) -> Self {
-        Self {rsa_config, main_gate_config, r_f, r_p}
+    pub fn new(rsa_config: RSAConfig, main_gate_config: MainGateConfig) -> Self {
+        Self {rsa_config, main_gate_config }
     }
 }
 
@@ -39,10 +44,16 @@ pub struct PoseidonCipherChip<
     const RATE: usize,
 > {
     // Chip configuration
+    /*  // zeroknight 0821
     config: PoseidonCipherConfig,
     spec: Spec<F, T, RATE>,
     n_hash: usize,
     _data: PhantomData<F>, 
+    */
+
+    // Chip
+    rsa_chip: RSAChip<F>,
+    hasher_chip: HasherChip<F, NUMBER_OF_LIMBS_HASH, BITS_LEN_HASH, T, RATE>,
 
 }
 
@@ -69,6 +80,18 @@ impl<
     // Arguments
     // config - a configuration for PoseidonCipherChip
     // ??!! 
+    pub fn new(
+        ctx: &mut RegionCtx<'_, F>,
+        spec: &Spec<F, T, RATE>,
+        rsa_chip: RSAChip<F>,
+    ) -> Result<Self, Error> {
+        let main_gate = rsa_chip.main_gate();
+        let main_gate_config = main_gate.config();
+
+        let hasher_chip = HasherChip::new(ctx, spec, main_gate_config)?;
+        Ok(Self { rsa_chip: rsa_chip, hasher_chip})
+    }
+    /*
     fn new(config: PoseidonCipherConfig, n_hash: usize) -> Self {
         let spec = Spec::<F, T, RATE>::new(config.r_f, config.r_p);
         PoseidonCipherChip {
@@ -78,6 +101,7 @@ impl<
             _data: PhantomData,
         }
     }
+    */
 
     // Getter for RSAChip
     pub fn rsa_chip(&self) -> RSAChip<F> {
@@ -85,11 +109,14 @@ impl<
             // config - a configuration for [RSAChip].
             // bits_len - the default bit length of [Fresh] type integers in this chip.
             // exp_limb_bits - the width of each limb when the exponent is decomposed.
+/*        
         RSAChip::<F>::new(
             self.config.rsa_config.clone(), 
             BITS_LEN_RSA, 
             EXP_LIMB_BITS_RSA,
         )
+*/
+        self.rsa_chip.clone()
     }
 
     pub fn poseidonhash_chip(&self, 
@@ -138,7 +165,7 @@ impl<
             (e.clone(), 1, EXP_LIMB_BITS_RSA);
         let e_unassigned = UnassignedInteger::from(e_limbs);
         let e_var = RSAPubE::Var(e_unassigned);
-        //let e_fix = RSAPubE::<F>::Fix(BigUint::from(Self::DEFAULT_E));
+        // let e_fix = RSAPubE::<F>::Fix(BigUint::from(Self::DEFAULT_E));
 
         // modulous - n
         let n_limbs = decompose_big::<F> //(e, number_of_limbs, bit_len)
@@ -162,13 +189,13 @@ impl<
         // let powed_fix = rsa_chip.modpow_public_key(ctx, &x_assigned, &public_key_fix)?;
 
         let valid_powed_var = big_pow_mod(&x, &e, &e);
-        //let valid_powed_fix = big_pow_mod(&x, &BigUint::from(Self::DEFAULT_E), &n);
+        // let valid_powed_fix = big_pow_mod(&x, &BigUint::from(Self::DEFAULT_E), &n);
 
         let valid_powed_var = bigint_chip.assign_constant_fresh(ctx, valid_powed_var)?;
-        //let valid_powed_fix = bigint_chip.assign_constant_fresh(ctx, valid_powed_fix)?;
+        // let valid_powed_fix = bigint_chip.assign_constant_fresh(ctx, valid_powed_fix)?;
 
         bigint_chip.assert_equal_fresh(ctx, &powed_var, &valid_powed_var)?;
-        //bigint_chip.assert_equal_fresh(ctx, &powed_fix, &valid_powed_fix)?;
+        // bigint_chip.assert_equal_fresh(ctx, &powed_fix, &valid_powed_fix)?;
 
         Ok(valid_powed_var) // zeroknight - mean anything?!
     }
@@ -201,11 +228,14 @@ impl<
         message: &Vec<F>,                      // zeroknight - todo : wrap as a specific type
     ) -> Result<Vec<F>, Error> {
 
+        let spec = Spec::<F, T, RATE>::new(Self::R_F, Self::R_P);
+        let main_gate = self.hasher_chip.main_gate();
+        let main_gate_config = main_gate.config();
         
         let mut hasher_chip = HasherChip::<F, NUMBER_OF_LIMBS_HASH, BITS_LEN_HASH, T, RATE>::new(
             ctx,
-            &self.spec,
-            &self.config.main_gate_config
+            &spec,
+            &main_gate_config,
         )?;
         let mut main_gate = hasher_chip.main_gate();
 
@@ -222,7 +252,7 @@ impl<
         // permutation on inputs
         let mut message_cells = vec![];
         let inputs = Value::known(message.clone());
-        for e in inputs.as_ref().transpose_vec(self.n_hash) {
+        for e in inputs.as_ref().transpose_vec(n_hash) {
             let e = main_gate.assign_value(ctx, e.map(|v| *v))?;
             message_cells.push(e.clone());
             hasher_chip.update(&[e.clone()]);
@@ -258,4 +288,183 @@ impl<
 
         unimplemented!()
     }
+}
+
+//============//
+
+
+// Poseidon Constants
+const NUMBER_OF_LIMBS_HASH: usize = 4;
+const BIT_LEN_LIMB_HASH: usize = 68;
+const BITS_LEN_RSA: usize = 2048;
+const LIMB_WIDTH_RSA: usize = 64;
+const EXP_LIMB_BITS: usize = 5;
+
+#[derive(Clone)]
+struct PoseidonCipherCircuitConfig{
+    poseidonCipherConfig : PoseidonCipherConfig,
+}
+
+struct PoseidonCipherCircuit<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> {
+     // RSA time lock puzzle : secret = x^e mod n
+     n : BigUint,
+     e : BigUint,
+     x : BigUint,        // base integer
+ 
+     // Poseidon
+     spec: Spec<F, T, RATE>,    // Spec for Poseidon Hash 
+     n_hash: usize,             // zeroknight - ??
+     message: Value<Vec<F>>,    // message to be encrypted
+     cipher: Value<Vec<F>>,     // cipher text from the message
+}
+
+impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> PoseidonCipherCircuit<F, T, RATE> {
+
+    const BITS_LEN_RSA: usize = 2048;
+    const LIMB_WIDTH_RSA: usize = RSAChip::<F>::LIMB_WIDTH; // 64
+    const EXP_LIMB_BITS_RSA: usize = 5;
+    const DEFAULT_E: u128 = 65537;
+
+    fn rsa_chip(&self, config: RSAConfig) -> RSAChip<F> {
+        RSAChip::new(config, Self::BITS_LEN_RSA, Self::EXP_LIMB_BITS_RSA)
+    }
+
+}
+
+impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Circuit<F>
+    for PoseidonCipherCircuit<F, T, RATE> {
+
+    type Config = PoseidonCipherCircuitConfig;
+    type FloorPlanner = SimpleFloorPlanner;
+
+    fn without_witnesses(&self) -> Self {
+        unimplemented!()
+    }
+
+    fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+        /*
+        pub struct PoseidonCipherConfig {
+            rsa_config: RSAConfig,
+            main_gate_config: MainGateConfig,
+        }
+        */
+        // configurate for RSA chip 
+        let main_gate_config = MainGate::<F>::configure(meta);
+        let (composition_bit_lens, overflow_bit_lens) =
+                RSAChip::<F>::compute_range_lens(Self::BITS_LEN_RSA / Self::LIMB_WIDTH_RSA);
+        let range_config = RangeChip::<F>::configure(
+            meta,
+            &main_gate_config,
+            composition_bit_lens,
+            overflow_bit_lens,
+        );
+        let bigint_config = BigIntConfig::new(range_config, main_gate_config.clone());
+        let rsa_config = RSAConfig::new(bigint_config);
+
+
+        let poseidonCipherConfig = PoseidonCipherConfig::new(rsa_config, main_gate_config);
+
+        PoseidonCipherCircuitConfig {
+            poseidonCipherConfig
+        }        
+        
+    }
+
+    fn synthesize(&self, config: Self::Config, mut layouter: impl Layouter<F>) -> Result<(), Error> {
+        let mut main_gate = MainGate::<F>::new(config.poseidonCipherConfig.main_gate_config.clone());
+        let rsa_chip = self.rsa_chip(config.poseidonCipherConfig.rsa_config.clone());
+
+        let x = self.x.clone();
+
+        layouter.assign_region(
+            || "poseidon cipher", 
+        |region| {
+
+            let offset = 0;
+            let ctx = &mut RegionCtx::new(region, offset);
+/*
+halo2_delay_enc::encryption::chip
+pub struct PoseidonCipherChip<F, 
+    const BITS_LEN_RSA: usize, 
+    const EXP_LIMB_BITS_RSA: usize, 
+    const NUMBER_OF_LIMBS_HASH: usize, 
+    const BITS_LEN_HASH: usize, 
+    const T: usize, const RATE: usize>
+*/
+            let poseidon_cipher_chip = PoseidonCipherChip::<F,BITS_LEN_RSA, EXP_LIMB_BITS, NUMBER_OF_LIMBS_HASH, BIT_LEN_LIMB_HASH, T, RATE>
+                ::new(ctx, &self.spec, rsa_chip.clone())?;
+            let secret = poseidon_cipher_chip.calculate_cipher_key(ctx, self.x.clone(), self.e.clone(), self.n.clone())?;
+
+/* // zeroknight : 먼저 위 calculate_cipher_key 테스트!!!
+
+            let key = PoseidonCipherKey::<F>{
+                key0: F::random(OsRng), // zeroknight : should be derived from 'secret'
+                key1: F::random(OsRng),
+            };
+            let nonce = F::random(OsRng);
+            let message = vec![F::random(OsRng);2];
+            poseidon_cipher_chip.encrypt_message(ctx, self.n_hash, &key, nonce, &message);
+*/
+            Ok(())
+        })?;
+        Ok(())
+    }
+}
+
+
+#[test]
+fn test_poseidon_encryption() {
+
+    use rand::{thread_rng, Rng};
+    use halo2wrong::halo2::dev::MockProver;
+
+    fn run<F: PrimeField + FromUniformBytes<64> + Ord, const T: usize, const RATE: usize>() {
+        let mut rng = thread_rng();
+        let bits_len = PoseidonCipherCircuit::<F, T, RATE>::BITS_LEN_RSA as u64;
+
+        let mut n = BigUint::default();
+        while n.bits() != bits_len {
+            n = rng.sample(RandomBits::new(bits_len));
+        }
+
+        let e = rng.sample::<BigUint, _>(RandomBits::new( PoseidonCipherCircuit::<F, T, RATE>::EXP_LIMB_BITS_RSA as u64)) % &n;
+        let x = rng.sample::<BigUint,_>(RandomBits::new(bits_len)) % &n;
+
+/*
+struct PoseidonCipherCircuit<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> {
+     // RSA time lock puzzle : secret = x^e mod n
+     n : BigUint,
+     e : BigUint,
+     x : BigUint,        // base integer
+ 
+     // Poseidon
+     spec: Spec<F, T, RATE>,    // Spec for Poseidon Hash 
+     n_hash: usize,             // zeroknight - ??
+     message: Value<Vec<F>>,    // message to be encrypted
+     cipher: Value<Vec<F>>,     // cipher text from the message
+}
+*/
+        let spec = Spec::<F, T, RATE>::new(8, 57);
+        let n_hash = 2;
+
+        let circuit = PoseidonCipherCircuit::<F, T, RATE> {
+            // RSA timelock puzzle
+            n,
+            e,
+            x,
+            // Poseidon Hash
+            spec,
+            n_hash,
+            message : Value::known(vec![]),
+            cipher : Value::known(vec![]),
+        };
+
+        let public_inputs = vec![vec![]];
+        mock_prover_verify(&circuit, public_inputs);
+
+    }
+
+    use halo2wrong::curves::bn256::Fr as BnFr;
+    run::<BnFr, 5, 4>();
+
 }

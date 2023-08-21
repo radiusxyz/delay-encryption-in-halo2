@@ -6,8 +6,6 @@ use halo2wrong::curves::bn256;
 use poseidon::{Poseidon, Spec};
 use rand_core::OsRng;
 
-use super::Bn256MessageInfo;
-
 use std::str::FromStr;
 
 pub const MESSAGE_CAPACITY: usize = 10;
@@ -15,8 +13,8 @@ pub const CIPHER_SIZE: usize = MESSAGE_CAPACITY + 1;
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct PoseidonCipherKey<F: PrimeField> {
-    key0: F,
-    key1: F,
+    pub key0: F,
+    pub key1: F,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -53,33 +51,6 @@ impl<F, const r_f: usize, const r_p: usize, const T: usize, const RATE:usize> Po
             key.key1,
             nonce,
         ]
-    }
-
-    // zeroknight - need to generalize..
-    pub fn get_message_bn256_vector(&self, message_bytes: &[u8]) -> [bn256::Fr; MESSAGE_CAPACITY] {// PoseidonCipher::capacity()] {
-        let mut message_vecs: Vec<Vec<u8>> = message_bytes.to_vec().chunks(32).map(|s| s.into()).collect();
-        let mut fields = Vec::new();
-
-        for( _, message_vec) in message_vecs.iter_mut().enumerate() {
-            let byte_length = message_vec.len();
-            message_vec.resize(32, 0);
-            
-            let temp = &*message_vec;
-            let message: [u8; 32] = temp.as_slice().try_into().unwrap();
-
-            fields.push( Bn256MessageInfo::new(bn256::Fr::from_bytes(&message).unwrap(), byte_length));
-
-        }
-
-        let mut messages = [bn256::Fr::ZERO; MESSAGE_CAPACITY];
-        let mut index = 0;
-
-        for(_, bn256_info) in fields.iter().enumerate() {
-            messages[index] = bn256_info.message;
-            index += 1;
-        }
-        messages
-
     }
 
     /*

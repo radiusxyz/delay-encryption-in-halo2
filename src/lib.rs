@@ -115,6 +115,11 @@ impl<F: PrimeField, const T: usize, const RATE: usize> Circuit<F>
 
     fn synthesize(&self, config: Self::Config, mut layouter: impl halo2wrong::halo2::circuit::Layouter<F>) -> Result<(), halo2wrong::halo2::plonk::Error> {
         
+        // poseidoncipherchip = new();
+        // enc_key = pcc.calucation_key();
+        // pcc.encrypt_message (enc_key);
+
+
         // === RSA based Time-lock === //
         let rsa_chip = self.rsa_chip(config.rsa_config.clone());
         let bigint_chip = rsa_chip.bigint_chip();
@@ -176,7 +181,7 @@ impl<F: PrimeField, const T: usize, const RATE: usize> Circuit<F>
             // inputs
             for e in self.inputs.as_ref().transpose_vec(self.n_hash) {
                 let e = main_gate.assign_value(ctx, e.map(|v| *v))?;
-                println!("intpus_cell : {:?}", e.value());
+                // println!("intpus_cell : {:?}", e.value());
                 hasher_chip.update(&[e.clone()]);
             }
             // constrain squeezing new challenge
@@ -254,7 +259,7 @@ fn test_modpow_2048_circuit() {
     //run with different curves
     use halo2wrong::curves::bn256::Fr as BnFq;
     use halo2wrong::curves::pasta::{Fp as PastaFp, Fq as PastaFq};
-    run::<BnFq, 3, 2>();
+    run::<BnFq, 5, 4>();
     //run::<PastaFp, 5, 4>();
     //run::<PastaFq, 5, 4>();
 
