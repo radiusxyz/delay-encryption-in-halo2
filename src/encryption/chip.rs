@@ -7,7 +7,7 @@ use halo2wrong::{halo2::{
     circuit::{SimpleFloorPlanner, Layouter, Chip},
 }, RegionCtx, curves::{CurveAffine, bn256::{self, G1Affine}}};
 
-use maingate::{MainGateConfig, decompose_big, MainGateInstructions, MainGate, RangeChip, mock_prover_verify};
+use maingate::{MainGateConfig, decompose_big, MainGateInstructions, MainGate, RangeChip, mock_prover_verify, RangeInstructions};
 use num_bigint::{BigUint, RandomBits};
 use poseidon::Spec;
 
@@ -188,7 +188,7 @@ impl<
         let powed_var = rsa_chip.modpow_public_key(ctx, &x_assigned, &public_key_var)?;
         // let powed_fix = rsa_chip.modpow_public_key(ctx, &x_assigned, &public_key_fix)?;
 
-        let valid_powed_var = big_pow_mod(&x, &e, &e);
+        let valid_powed_var = big_pow_mod(&x, &e, &n);
         // let valid_powed_fix = big_pow_mod(&x, &BigUint::from(Self::DEFAULT_E), &n);
 
         let valid_powed_var = bigint_chip.assign_constant_fresh(ctx, valid_powed_var)?;
@@ -373,6 +373,10 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
     fn synthesize(&self, config: Self::Config, mut layouter: impl Layouter<F>) -> Result<(), Error> {
         let mut main_gate = MainGate::<F>::new(config.poseidonCipherConfig.main_gate_config.clone());
         let rsa_chip = self.rsa_chip(config.poseidonCipherConfig.rsa_config.clone());
+
+
+        // zeroknight - from DK
+        rsa_chip.bigint_chip().range_chip().load_table(&mut layouter)?;
 
         let x = self.x.clone();
 
