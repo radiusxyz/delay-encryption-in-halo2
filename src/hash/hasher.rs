@@ -18,8 +18,8 @@ pub struct HasherChip<
     const T: usize,
     const RATE: usize,
 > {
-    state: AssignedState<F, T>,
-    absorbing: Vec<AssignedValue<F>>,
+    pub state: AssignedState<F, T>,
+    pub absorbing: Vec<AssignedValue<F>>,
     spec: Spec<F, T, RATE>,
     main_gate_config: MainGateConfig,
 }
@@ -295,7 +295,7 @@ impl<
         self.sbox_full(ctx, &[F::ZERO; T])?;
         self.apply_mds(ctx, &mds)?;
 
-        Ok(())
+        Ok(())  // zeroknight
     }
 
     pub fn hash(&mut self, ctx: &mut RegionCtx<'_, F>) -> Result<AssignedValue<F>, Error> {

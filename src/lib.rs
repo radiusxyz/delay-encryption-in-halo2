@@ -4,6 +4,7 @@ use std::marker::PhantomData;
 pub use big_integer::*;
 
 pub mod rsa;
+use encryption::{poseidon::{PoseidonCipherTest, PoseidonCipherKey, CIPHER_SIZE_TEST, MESSAGE_CAPACITY_TEST}, PoseidonCipherInstructions};
 use hash::hasher::HasherChip;
 use rand_core::OsRng;
 pub use rsa::*;
@@ -33,6 +34,7 @@ use ecc::{EccConfig, integer::rns::Rns, BaseFieldEccChip};
 use ecc::halo2::circuit::Value;
 
 use ::poseidon::{Spec, Poseidon};
+//use ::rsa::PublicKeyParts;
 
 
 // Poseidon Constants
@@ -264,3 +266,197 @@ fn test_modpow_2048_circuit() {
     //run::<PastaFq, 5, 4>();
 
 }
+
+
+//======================= Poseidon Encryption ==================//
+#[derive(Clone)]
+struct PECircuitConfig {
+    main_gate_config: MainGateConfig,
+}
+
+struct PECircuit<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> {
+    spec: Spec<F, T, RATE>,
+    n_hash: usize,
+    inputs: Value<Vec<F>>,
+    key: PoseidonCipherKey<F>,
+    expected: Value<F>,
+    encrypted: Value<Vec<F>>,
+}
+
+impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> PECircuit<F, T, RATE> {
+    const EXP_LIMB_BITS: usize = 5;
+
+}
+
+impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Circuit<F>
+    for PECircuit<F, T, RATE> {
+    type Config = PECircuitConfig;
+    type FloorPlanner = SimpleFloorPlanner;
+
+    fn without_witnesses(&self) -> Self {
+        todo!()
+    }
+
+    fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+        let main_gate_config = MainGate::<F>::configure(meta);
+        PECircuitConfig {
+            main_gate_config,
+        }
+    }
+
+    fn synthesize(&self, config: Self::Config, mut layouter: impl Layouter<F>) -> Result<(), Error> {
+        let mut main_gate = MainGate::<F>::new(config.main_gate_config.clone());
+        layouter.assign_region(
+            || "poseidon region", 
+            |region| {
+                let offset = 0;
+                let ctx = &mut RegionCtx::new(region, offset);
+                let mut hasher_chip = HasherChip::<F, NUMBER_OF_LIMBS, BIT_LEN_LIMB, T, RATE>::new(ctx, &self.spec, &config.main_gate_config )?;
+    
+                // inputs
+                for e in self.inputs.as_ref().transpose_vec(self.n_hash) {
+                    let e = main_gate.assign_value(ctx, e.map(|v| *v))?;
+                    // println!("intpus_cell : {:?}", e.value());
+                    hasher_chip.update(&[e.clone()]);
+                }
+                // constrain squeezing new challenge
+                let challenge = hasher_chip.hash(ctx)?;
+    
+                //println!("[in circuit] inputs: {:?}",self.inputs);
+                //println!("[in circuit] challenge: {:?}", challenge.value());
+    
+                let expected = main_gate.assign_value(ctx, self.expected)?;
+    
+                //println!("[in circuit] expected: {:?}", expected.value());
+    
+                main_gate.assert_equal(ctx, &challenge, &expected)?;
+                Ok(())
+        })?;
+
+        // Poseidon Encryption
+        layouter.assign_region(
+            || "poseidon encryption", 
+            |region| {
+
+                let offset = 0;
+                let ctx = &mut RegionCtx::new(region, offset);
+
+                let mut cipher = PoseidonCipherTest::<F, T, RATE> {
+                    r_f: 8,
+                    r_p: 57,
+                    cipherKey: self.key.clone(),
+                    cipherByteSize: CIPHER_SIZE_TEST * (F::NUM_BITS as usize) / (8 as usize),
+                    cipher: [F::ZERO; CIPHER_SIZE_TEST],
+                };
+                let initial_state = cipher.initial_state(F::ONE);
+
+                // assign initial_state into cells.
+                let mut hasher_chip = HasherChip::<F, NUMBER_OF_LIMBS, BIT_LEN_LIMB, T, RATE>::new(ctx, &self.spec, &config.main_gate_config)?;
+                let mut input_intial = vec![];
+                for e in initial_state {
+                    let e = main_gate.assign_value(ctx, Value::known(e))?;
+                    //hasher_chip.update(&[e.clone()]);
+                    input_intial.push(e);
+                }
+                // !!!!!! = zeroknight - should be uncommented
+                //hasher_chip.permutation(ctx, input_intial.clone())?;
+
+                // assign message (inputs) into cells
+                let mut message_state = vec![];
+                for e in self.inputs.as_ref()
+                                    .transpose_vec(self.n_hash) {
+                    let e = main_gate.assign_value(ctx, e.map(|v| *v))?;
+                    message_state.push(e);
+                }
+
+                (0..MESSAGE_CAPACITY_TEST).for_each(|i| {
+                    //let mut current_states = hasher_chip.absorbing.clone();
+                    let mut current_states = hasher_chip.absorbing.clone();
+                    println!("length : {}", current_states.len());
+                    if current_states.len() == 0 {} // zeroknight.. should not be 0
+                    else {
+                        if i < message_state.len() {
+                            current_states[i+1] = main_gate.add(ctx, &current_states[i+1], &message_state[i]).unwrap();
+                        } else {
+                            let zero = main_gate.assign_constant(ctx, F::ZERO).unwrap();
+                            current_states[i+1] = main_gate.add(ctx, &current_states[i+1], &zero).unwrap();
+                        }
+                    }
+                    // [WIP] cipher[i] = state[i + 1];
+                });
+
+                // [WIP] hasher.update(&state);
+
+                // [WIP] cipher[MESSAGE_CAPACITY_TEST] = state[1];
+
+                // [WIP] cipher == self.encrypted
+
+                Ok(())
+
+        })?;
+
+
+        Ok(())
+    }
+}
+
+#[test]
+fn test_poseidon_encryption() {
+
+    use crate::encryption::poseidon::*;
+    
+    fn run<F: FromUniformBytes<64> + Ord, const T: usize, const RATE: usize>() {
+        let mut ref_hasher = Poseidon::<F, T, RATE>::new(8, 57);
+
+        let spec = Spec::<F, T, RATE>::new(8,57);
+        let inputs = (0..(3*T)).map(|_| F::random(OsRng)).collect::<Vec<F>>();
+        ref_hasher.update(&inputs[..]);
+        let expected = ref_hasher.squeeze();
+
+        //======== Poseidon Encryption ============//
+        let key = PoseidonCipherKey::<F> {
+            key0: F::random(OsRng),
+            key1: F::random(OsRng),
+        };
+
+        let mut cipher = PoseidonCipherTest::<F, 5, 4> {
+            r_f: 8,
+            r_p: 57,
+            cipherKey: key.clone(),
+            cipherByteSize: CIPHER_SIZE_TEST * (F::NUM_BITS as usize) / 8,
+            cipher: [F::ZERO; CIPHER_SIZE_TEST],
+        };
+        
+        let message = [F::random(OsRng), F::random(OsRng)];
+        cipher.encrypt(&message, &F::ONE);
+        println!("Messages.: {:?}", message);
+        println!("Encrypted: {:?}", cipher.cipher);
+        println!("Decrypted: {:?}", cipher.decrypt(&F::ONE).unwrap());
+
+
+        //========== Circuit =============//
+        let key = PoseidonCipherKey::<F> {
+            key0 : F::random(OsRng),
+            key1 : F::random(OsRng),
+        };
+
+        let circuit = PECircuit::<F, T, RATE> {
+            spec: spec.clone(),
+            n_hash: 3*T,
+            inputs: Value::known(inputs),
+            key: key.clone(),
+            expected: Value::known(expected),
+            encrypted: Value::known(cipher.cipher.to_vec()),    // Encrypted
+        };
+
+        let public_inputs = vec![vec![]];
+        mock_prover_verify(&circuit, public_inputs);
+    }
+    use halo2wrong::curves::bn256::Fr as BnFr;
+
+    run::<BnFr, 5,4>();
+}
+
+
+
+

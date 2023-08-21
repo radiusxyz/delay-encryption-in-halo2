@@ -104,7 +104,7 @@ impl<
     */
 
     // Getter for RSAChip
-    pub fn rsa_chip(&self) -> RSAChip<F> {
+    pub fn rsa_chip(&self) -> &RSAChip<F> {
         // RSAChip - new()
             // config - a configuration for [RSAChip].
             // bits_len - the default bit length of [Fresh] type integers in this chip.
@@ -116,7 +116,7 @@ impl<
             EXP_LIMB_BITS_RSA,
         )
 */
-        self.rsa_chip.clone()
+        &self.rsa_chip
     }
 
     pub fn poseidonhash_chip(&self, 
@@ -155,7 +155,7 @@ impl<
         // zeroknight - commented out things with 'fix' 
             // todo : figure out What 'fix' does 
 
-        let rsa_chip = self.rsa_chip();
+        let rsa_chip = self.rsa_chip(); 
         let bigint_chip = rsa_chip.bigint_chip();
 
         let num_limbs = BITS_LEN_RSA / Self::LIMB_WIDTH_RSA;
@@ -395,6 +395,8 @@ pub struct PoseidonCipherChip<F,
                 ::new(ctx, &self.spec, rsa_chip.clone())?;
             let secret = poseidon_cipher_chip.calculate_cipher_key(ctx, self.x.clone(), self.e.clone(), self.n.clone())?;
 
+            let temp = secret.to_big_uint(LIMB_WIDTH_RSA).map(|e| e);
+
 /* // zeroknight : 먼저 위 calculate_cipher_key 테스트!!!
 
             let key = PoseidonCipherKey::<F>{
@@ -429,6 +431,7 @@ fn test_poseidon_encryption() {
 
         let e = rng.sample::<BigUint, _>(RandomBits::new( PoseidonCipherCircuit::<F, T, RATE>::EXP_LIMB_BITS_RSA as u64)) % &n;
         let x = rng.sample::<BigUint,_>(RandomBits::new(bits_len)) % &n;
+
 
 /*
 struct PoseidonCipherCircuit<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> {
