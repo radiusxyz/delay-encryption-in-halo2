@@ -212,8 +212,10 @@ impl<
         // initial state
         // fn initial_state(key: &PoseidonCipherKey<F>, nonce: F) -> [F; 5]
         let mut state = PoseidonCipher::<F, 8, 57, T, RATE>::initial_state(key, nonce);
+        let mut state_cells = vec![];
         for e in state {
             let e = main_gate.assign_value(ctx, Value::known(e))?;
+            state_cells.push(e.clone());
             hasher_chip.update(&[e.clone()]);
         }
 
@@ -230,6 +232,7 @@ impl<
 
             if i < message.len() {
                 // state[i+1] += message[i]
+                state_cells[i+1] = main_gate.add(ctx, &state_cells[i+1], &message_cells[i]).unwrap();
             } else {
                 // state[i+1] += F::ZERO
             }
@@ -237,6 +240,12 @@ impl<
             // cipher[i] = state[i+1];
 
         });
+
+        // hasher.update(&state);
+
+        // cipher[MESSAGE_CAPACITY] = state[1];
+
+
 
         /*
         // Poseidon Hash on inputs
