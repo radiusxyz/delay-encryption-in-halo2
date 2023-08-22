@@ -1,7 +1,6 @@
-
 use std::marker::PhantomData;
 
-use ff::{PrimeField, FromUniformBytes, Field};
+use ff::{Field, FromUniformBytes, PrimeField};
 use halo2wrong::curves::bn256;
 use poseidon::{Poseidon, Spec};
 use rand_core::OsRng;
@@ -20,17 +19,24 @@ pub struct PoseidonCipherKey<F: PrimeField> {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct PoseidonCipher<F: PrimeField + FromUniformBytes<64>, const r_f: usize, const r_p: usize,
-                        const T: usize, const RATE: usize> {
-                            cipher_bytes_size: usize,
-                            _spec : PhantomData<F>,
-                        }
+pub struct PoseidonCipher<
+    F: PrimeField + FromUniformBytes<64>,
+    const r_f: usize,
+    const r_p: usize,
+    const T: usize,
+    const RATE: usize,
+> {
+    cipher_bytes_size: usize,
+    _spec: PhantomData<F>,
+}
 
-impl<F, const r_f: usize, const r_p: usize, const T: usize, const RATE:usize> PoseidonCipher<F, r_f, r_p, T, RATE>
-    where F: PrimeField + FromUniformBytes<64>,
+impl<F, const r_f: usize, const r_p: usize, const T: usize, const RATE: usize>
+    PoseidonCipher<F, r_f, r_p, T, RATE>
+where
+    F: PrimeField + FromUniformBytes<64>,
 {
     pub const fn new() -> Self {
-        Self { 
+        Self {
             cipher_bytes_size: CIPHER_SIZE * (F::NUM_BITS as usize) / 8,
             _spec: PhantomData,
         }
@@ -43,7 +49,8 @@ impl<F, const r_f: usize, const r_p: usize, const T: usize, const RATE:usize> Po
         CIPHER_SIZE
     }
 
-    pub fn initial_state(key: &PoseidonCipherKey<F>, nonce: F) -> [F; 5]  {   // zeroknight : 5?!
+    pub fn initial_state(key: &PoseidonCipherKey<F>, nonce: F) -> [F; 5] {
+        // zeroknight : 5?!
         [
             // Domain - Maximum plaintext length of the elements of Fq, as defined
             F::from_u128(0x100000000 as u128),
@@ -56,30 +63,36 @@ impl<F, const r_f: usize, const r_p: usize, const T: usize, const RATE:usize> Po
     }
 
     // zeroknight - need to generalize..
-    pub fn get_message_bn256_vector(&self, message_bytes: &[u8]) -> [bn256::Fr; MESSAGE_CAPACITY] {// PoseidonCipher::capacity()] {
-        let mut message_vecs: Vec<Vec<u8>> = message_bytes.to_vec().chunks(32).map(|s| s.into()).collect();
+    pub fn get_message_bn256_vector(&self, message_bytes: &[u8]) -> [bn256::Fr; MESSAGE_CAPACITY] {
+        // PoseidonCipher::capacity()] {
+        let mut message_vecs: Vec<Vec<u8>> = message_bytes
+            .to_vec()
+            .chunks(32)
+            .map(|s| s.into())
+            .collect();
         let mut fields = Vec::new();
 
-        for( _, message_vec) in message_vecs.iter_mut().enumerate() {
+        for (_, message_vec) in message_vecs.iter_mut().enumerate() {
             let byte_length = message_vec.len();
             message_vec.resize(32, 0);
-            
+
             let temp = &*message_vec;
             let message: [u8; 32] = temp.as_slice().try_into().unwrap();
 
-            fields.push( Bn256MessageInfo::new(bn256::Fr::from_bytes(&message).unwrap(), byte_length));
-
+            fields.push(Bn256MessageInfo::new(
+                bn256::Fr::from_bytes(&message).unwrap(),
+                byte_length,
+            ));
         }
 
         let mut messages = [bn256::Fr::ZERO; MESSAGE_CAPACITY];
         let mut index = 0;
 
-        for(_, bn256_info) in fields.iter().enumerate() {
+        for (_, bn256_info) in fields.iter().enumerate() {
             messages[index] = bn256_info.message;
             index += 1;
         }
         messages
-
     }
 
     /*
@@ -102,12 +115,12 @@ impl<F, const r_f: usize, const r_p: usize, const T: usize, const RATE:usize> Po
     }
     */
 
-    pub fn encrypt(&self, message:&[F], key: &PoseidonCipherKey<F>) -> ([F; CIPHER_SIZE], F) {
+    pub fn encrypt(&self, message: &[F], key: &PoseidonCipherKey<F>) -> ([F; CIPHER_SIZE], F) {
         let mut hasher = Poseidon::<F, T, RATE>::new(r_f, r_p);
         let nonce = F::random(OsRng);
-        
+
         let mut cipher = [F::ZERO; CIPHER_SIZE];
-        let count = (MESSAGE_CAPACITY +3) / 4;
+        let count = (MESSAGE_CAPACITY + 3) / 4;
 
         let mut state = PoseidonCipher::<F, r_f, r_p, T, RATE>::initial_state(key, nonce);
 
@@ -130,11 +143,15 @@ impl<F, const r_f: usize, const r_p: usize, const T: usize, const RATE:usize> Po
         cipher[MESSAGE_CAPACITY] = state[1];
 
         (cipher, nonce)
-
     }
 
-    pub fn decrypt(&self, cipherText: &[F;CIPHER_SIZE], key: &PoseidonCipherKey<F>, nonce: F ) -> Option<[F; MESSAGE_CAPACITY]> {
-        let mut hasher = Poseidon::<F, T, RATE>::new(r_f,r_p);
+    pub fn decrypt(
+        &self,
+        cipherText: &[F; CIPHER_SIZE],
+        key: &PoseidonCipherKey<F>,
+        nonce: F,
+    ) -> Option<[F; MESSAGE_CAPACITY]> {
+        let mut hasher = Poseidon::<F, T, RATE>::new(r_f, r_p);
 
         let mut message = [F::ZERO; MESSAGE_CAPACITY];
         let mut state = PoseidonCipher::<F, r_f, r_p, T, RATE>::initial_state(key, nonce);
@@ -159,13 +176,10 @@ impl<F, const r_f: usize, const r_p: usize, const T: usize, const RATE:usize> Po
 
         Some(message)
     }
-
 }
-
 
 #[test]
 fn test() {
-    
     let key = PoseidonCipherKey::<bn256::Fr> {
         key0: bn256::Fr::random(OsRng),
         key1: bn256::Fr::random(OsRng),
@@ -176,11 +190,10 @@ fn test() {
 
     println!("message: {:?}", message);
 
-    let (cipherText, nonce)  = cipher.encrypt(&message, &key);
-    println!("encrypted: {:?}", cipherText );
+    let (cipherText, nonce) = cipher.encrypt(&message, &key);
+    println!("encrypted: {:?}", cipherText);
     println!("decrypted: {:?}", cipher.decrypt(&cipherText, &key, nonce));
 }
-
 
 /*
 // halo2curves::group::ff::{FromUniformBytes, PrimeField}
@@ -206,7 +219,7 @@ pub struct PoseidonCipher<F: PrimeField + FromUniformBytes<64>, const T: usize, 
     cipherKey: SymmetricKey<F>,
     cipherByteSize: usize,
 
-    // 
+    //
     pub cipher: [F; CIPHER_SIZE],
 }
 
@@ -277,7 +290,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Po
         });
 
         hasher.update(&mut state);
-        
+
         if self.cipher[MESSAGE_CAPACITY] != state[1] {
             return None;
         }

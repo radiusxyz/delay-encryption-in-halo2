@@ -597,12 +597,12 @@ impl<F: Field, const WIDTH: usize> Pow5State<F, WIDTH> {
 mod tests {
     use group::ff::{Field, PrimeField};
 
+    use halo2wrong::curves::pasta::{pallas, Fp};
     use halo2wrong::halo2::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem, Error},
     };
-    use halo2wrong::curves::pasta::{pallas, Fp};
     use rand::rngs::OsRng;
 
     use super::{PoseidonInstructions, Pow5Chip, Pow5Config, StateWord};

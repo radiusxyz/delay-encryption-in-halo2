@@ -1,5 +1,5 @@
-use halo2wrong::halo2::arithmetic::Field;
 use halo2wrong::curves::pasta::{pallas::Base as Fp, vesta::Base as Fq};
+use halo2wrong::halo2::arithmetic::Field;
 
 use super::{Mds, Spec};
 

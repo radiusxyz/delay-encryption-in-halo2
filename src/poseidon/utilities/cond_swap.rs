@@ -197,12 +197,12 @@ mod tests {
     use super::{CondSwapChip, CondSwapConfig, CondSwapInstructions};
     use ff::PrimeField;
     use group::ff::Field;
+    use halo2wrong::curves::pasta::pallas::Base;
     use halo2wrong::halo2::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem, Error},
     };
-    use halo2wrong::curves::pasta::pallas::Base;
     use rand::rngs::OsRng;
 
     #[test]

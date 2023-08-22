@@ -12,7 +12,7 @@ use maingate::{
 };
 
 // zeroknight - use ff::PrimeField instead of halo2wrong::halo2::arithmetic::Field
-use ff::{PrimeField, FromUniformBytes};
+use ff::{FromUniformBytes, PrimeField};
 
 use num_bigint::BigUint;
 use std::marker::PhantomData;
