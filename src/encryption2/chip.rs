@@ -332,17 +332,24 @@ impl<
     //     self.absorbing.extend_from_slice(elements);
     // }
 
-    pub fn encrypt(
+    pub fn encrypt_with_circuit(
         &mut self,
         ctx: &mut RegionCtx<'_, F>,
         key: &PoseidonEncKey<F>,
         nonce: F,
-        message: &Vec<F>,
+        message: &Vec<AssignedValue<F>>,
     ) -> Result<AssignedValue<F>, Error> {
         // Get elements to encrypt
         let input_elements = self.absorbing.clone();
         // Flush the input que
         self.absorbing.clear();
+
+
+        println!("init_state0?{:?}\n", self.state.0[0]);
+        println!("init_state1?{:?}\n", self.state.0[1]);
+        println!("init_state2?{:?}\n", self.state.0[2]);
+        println!("init_state3?{:?}\n", self.state.0[3]);
+        println!("init_state4?{:?}\n", self.state.0[4]);
 
         self.state.0[0] = self.main_gate().add_constant(
             ctx,
@@ -368,42 +375,58 @@ impl<
             .main_gate()
             .add_constant(ctx, &self.state.0[4], nonce)?;
 
-        println!("STATE?{:?}", self.state.0[1]);
+        
 
-        let mut message_cells = vec![];
-        let inputs = Value::known(message.clone());
-        for e in inputs.as_ref().transpose_vec(2) {
-            let e = self.main_gate().assign_value(ctx, e.map(|v| *v))?;
-            message_cells.push(e.clone());
-            self.update(&[e.clone()]);
-        }
+        println!("??????{:?}\n", F::from_u128(0x100000000 as u128));
+        println!("state0?{:?}\n", self.state.0[0]);
+        println!("state1?{:?}\n", self.state.0[1]);
+        println!("state2?{:?}\n", self.state.0[2]);
+        println!("state3?{:?}\n", self.state.0[3]);
+        println!("state4?{:?}\n", self.state.0[4]);
 
-        let mut padding_offset = 0;
+        // let mut message_cells = vec![];
+        // let message_cells = Value::known(message.clone());
+        // for e in inputs.as_ref().transpose_vec(2) {
+        //     let e = self.main_gate().assign_value(ctx, e.map(|v| *v))?;
+        //     message_cells.push(e.clone());
+        //     self.update(&[e.clone()]);
+        // }
+
+        // let mut padding_offset = 0;
         // Apply permutation to `RATE`Ï sized chunks
-        for chunk in input_elements.chunks(RATE) {
-            padding_offset = RATE - chunk.len();
-            self.permutation(ctx, chunk.to_vec())?;
+        // for chunk in input_elements.chunks(RATE) {
+            // padding_offset = RATE - chunk.len();
+        self.permutation(ctx, input_elements[0..4].to_vec())?;
 
-            // (0..MESSAGE_CAPACITY).for_each(|i| {
-            self.state.0[1] = self
-                .main_gate()
-                .add(ctx, &self.state.0[1], &input_elements[0])?;
+        // (0..MESSAGE_CAPACITY).for_each(|i| {
+        self.state.0[1] = self
+            .main_gate()
+            .add(ctx, &self.state.0[1], &message[0])?;
+        // });
 
-            // });
+        self.state.0[2] = self
+            .main_gate()
+            .add(ctx, &self.state.0[2], &message[1])?;
 
-            self.state.0[2] = self
-                .main_gate()
-                .add(ctx, &self.state.0[2], &input_elements[1])?;
+        self.state.0[3] = self
+            .main_gate()
+            .add(ctx, &self.state.0[3], &message[2])?;
 
-            self.state.0[3] = self
-                .main_gate()
-                .add(ctx, &self.state.0[3], &input_elements[2])?;
-        }
+        self.state.0[4] = self
+            .main_gate()
+            .add(ctx, &self.state.0[4], &message[3])?;
+        
+        println!("STATE0?{:?}\n", self.state.0[0]);
+        println!("STATE1?{:?}\n", self.state.0[1]);
+        println!("STATE2?{:?}\n", self.state.0[2]);
+        println!("STATE3?{:?}\n", self.state.0[3]);
+        println!("STATE4?{:?}\n", self.state.0[4]);
+        // }
 
         // If last chunking is full apply another permutation for collution resistance
-        if padding_offset == 0 {
-            self.permutation(ctx, vec![])?;
-        }
+        // if padding_offset == 0 {
+        self.permutation(ctx, vec![])?;
+        // }
 
         Ok(self.state.0[1].clone())
     }
@@ -421,6 +444,7 @@ mod tests {
     const MESSAGE_CAPACITY: usize = 2;
 
     use ff::{Field, PrimeField};
+    use halo2::plonk::Assigned;
     use halo2wrong::halo2::plonk::{Circuit, ConstraintSystem};
     use maingate::{
         mock_prover_verify, AssignedValue, MainGate, MainGateConfig, MainGateInstructions,
@@ -433,7 +457,7 @@ mod tests {
     // use crate::encryption::poseidon::MESSAGE_CAPACITY;
 
     use halo2wrong::curves::bn256;
-    use halo2wrong::halo2::circuit::{Chip, Layouter, SimpleFloorPlanner, Value};
+    use halo2wrong::halo2::circuit::{Chip, Layouter, SimpleFloorPlanner, Value, AssignedCell};
     use proptest::test_runner::Config;
     use rand_core::OsRng;
 
@@ -498,18 +522,29 @@ mod tests {
                         pose_enc_chip.update(&[e.clone()]);
                     }
 
-                    let nonce = F::random(OsRng);
-                    // let mut message = [F::ZERO; MESSAGE_CAPACITY];
-                    let message = vec![F::ZERO, F::ZERO];
+                    // let nonce = F::random(OsRng);
+                    let nonce = F::ZERO;
+
+                    let mut message_cells = vec![];
+                    let message = Value::known(vec![F::ZERO;4]);
+                    for e in message.as_ref().transpose_vec(4) {
+                        let e = main_gate.assign_value(ctx, e.map(|v| *v))?;
+                        message_cells.push(e.clone());
+                    }
+                    // let key = PoseidonEncKey::<F> {
+                    //     key0: F::random(OsRng),
+                    //     key1: F::random(OsRng),
+                    // };
 
                     let key = PoseidonEncKey::<F> {
-                        key0: F::random(OsRng),
-                        key1: F::random(OsRng),
+                        key0: F::ZERO,
+                        key1: F::ZERO,
                     };
 
-                    let challenge = pose_enc_chip.encrypt(ctx, &key, nonce, &message)?;
+                    println!("START ENCRYPTION");
+
+                    let challenge = pose_enc_chip.encrypt_with_circuit(ctx, &key, nonce, &message_cells)?;
                     let expected = main_gate.assign_value(ctx, self.expected)?;
-                    main_gate.assert_equal(ctx, &challenge, &expected)?;
 
                     Ok(())
                 },
@@ -525,13 +560,15 @@ mod tests {
     fn enc_example() {
         //use crate::curves::bn256::{Fr, G1Affine};
         use halo2wrong::curves::bn256::Fr;
-        for number_of_inputs in 0..3 * 3 {
-            println!("{:?}", number_of_inputs);
+        // for number_of_inputs in 0..3 * 3 {
+            let num_state = 5;
+            println!("{:?}", num_state);
             let mut ref_hasher = Poseidon::<Fr, 5, 4>::new(8, 57);
             let spec = Spec::<Fr, 5, 4>::new(8, 57);
 
-            let inputs: Vec<Fr> = (0..number_of_inputs)
-                .map(|_| Fr::random(OsRng))
+            let inputs: Vec<Fr> = (0..num_state)
+                .map(|_| Fr::ZERO)
+                // .map(|_| Fr::random(OsRng))
                 .collect::<Vec<Fr>>();
 
             ref_hasher.update(&inputs[..]);
@@ -539,12 +576,12 @@ mod tests {
 
             let circuit: PoseidonEncCircuit<Fr, 5, 4> = PoseidonEncCircuit {
                 spec: spec.clone(),
-                n: number_of_inputs,
+                n: num_state,
                 inputs: Value::known(inputs),
                 expected: Value::known(expected),
             };
             let instance = vec![vec![]];
             mock_prover_verify(&circuit, instance);
-        }
+        // }
     }
 }

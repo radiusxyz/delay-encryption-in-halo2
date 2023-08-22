@@ -9,7 +9,7 @@ use super::Bn256MessageInfo;
 
 use std::str::FromStr;
 
-pub const MESSAGE_CAPACITY: usize = 10;
+pub const MESSAGE_CAPACITY: usize = 4;
 pub const CIPHER_SIZE: usize = MESSAGE_CAPACITY + 1;
 
 #[derive(Copy, Clone, Debug, Default)]
@@ -117,15 +117,28 @@ where
 
     pub fn encrypt(&self, message: &[F], key: &PoseidonCipherKey<F>) -> ([F; CIPHER_SIZE], F) {
         let mut hasher = Poseidon::<F, T, RATE>::new(r_f, r_p);
-        let nonce = F::random(OsRng);
+        // let nonce = F::random(OsRng);
+        let nonce = F::ZERO;
 
         let mut cipher = [F::ZERO; CIPHER_SIZE];
         let count = (MESSAGE_CAPACITY + 3) / 4;
 
         let mut state = PoseidonCipher::<F, r_f, r_p, T, RATE>::initial_state(key, nonce);
 
+        println!("state0?{:?}\n", state[0]);
+        println!("state1?{:?}\n", state[1]);
+        println!("state2?{:?}\n", state[2]);
+        println!("state3?{:?}\n", state[3]);
+        println!("state4?{:?}\n", state[4]);
+
         (0..count).for_each(|i| {
             hasher.update(&state);
+
+        // println!("STATE0?{:?}\n", hasher.state.0[0]);
+        // println!("STATE1?{:?}\n", hasher.state.0[1]);
+        // println!("STATE2?{:?}\n", hasher.state.0[2]);
+        // println!("STATE3?{:?}\n", hasher.state.0[3]);
+        // println!("STATE4?{:?}\n", hasher.state.0[4]);
 
             (0..4).for_each(|j| {
                 if 4 * i + j < MESSAGE_CAPACITY {
@@ -179,17 +192,25 @@ where
 }
 
 #[test]
-fn test() {
+fn test_enc() {
+    // let key = PoseidonCipherKey::<bn256::Fr> {
+    //     key0: bn256::Fr::random(OsRng),
+    //     key1: bn256::Fr::random(OsRng),
+    // };
+
     let key = PoseidonCipherKey::<bn256::Fr> {
-        key0: bn256::Fr::random(OsRng),
-        key1: bn256::Fr::random(OsRng),
+        key0: bn256::Fr::ZERO,
+        key1: bn256::Fr::ZERO,
     };
 
     let mut cipher = PoseidonCipher::<bn256::Fr, 8, 57, 5, 4>::new();
-    let message = [bn256::Fr::random(OsRng); MESSAGE_CAPACITY];
+    // let message = [bn256::Fr::random(OsRng); MESSAGE_CAPACITY];
+
+    let message = [bn256::Fr::ZERO; MESSAGE_CAPACITY];
 
     println!("message: {:?}", message);
 
+    // let (cipherText, nonce) = cipher.encrypt(&message, &key);
     let (cipherText, nonce) = cipher.encrypt(&message, &key);
     println!("encrypted: {:?}", cipherText);
     println!("decrypted: {:?}", cipher.decrypt(&cipherText, &key, nonce));
