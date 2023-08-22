@@ -196,6 +196,13 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Po
         ]
     }
 
+    pub fn hash(&mut self, message:&[F],) -> F {
+        let mut hasher = Poseidon::<F, T, RATE>::new(self.r_f, self.r_p);
+        hasher.update(&message[..]);
+        hasher.squeeze().clone()
+    }
+
+
     pub fn encrypt(&mut self, message:&[F], nonce: &F) {
 
         let mut hasher = Poseidon::<F, T, RATE>::new(self.r_f, self.r_p);
@@ -206,7 +213,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Po
         // zeroknight : permutation is update in Poseidon
         hasher.update(&state);
 
-        
+
         (0..MESSAGE_CAPACITY_TEST).for_each(|i| {
             state[i + 1] += if i < message.len() {
                 message[i]
@@ -221,6 +228,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Po
         cipher[MESSAGE_CAPACITY_TEST] = state[1];
 
         self.cipher = cipher;
+
     }
 
     pub fn decrypt(&mut self, nonce: &F) -> Option<[F; MESSAGE_CAPACITY_TEST]>{

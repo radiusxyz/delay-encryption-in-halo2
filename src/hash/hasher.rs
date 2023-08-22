@@ -6,7 +6,8 @@ use poseidon::{SparseMDSMatrix, Spec, State};
 
 /// `AssignedState` is composed of `T` sized assigned values
 #[derive(Debug, Clone)]
-pub struct AssignedState<F: PrimeField, const T: usize>(pub(super) [AssignedValue<F>; T]);
+//pub struct AssignedState<F: PrimeField, const T: usize>(pub(super) [AssignedValue<F>; T]);
+pub struct AssignedState<F: PrimeField, const T: usize>(pub [AssignedValue<F>; T]); // zeroknight : make 
 
 /// `HasherChip` is basically responsible for contraining permutation part of
 /// transcript pipeline

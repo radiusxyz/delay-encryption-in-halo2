@@ -306,6 +306,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
 
     fn synthesize(&self, config: Self::Config, mut layouter: impl Layouter<F>) -> Result<(), Error> {
         let mut main_gate = MainGate::<F>::new(config.main_gate_config.clone());
+        /*
         layouter.assign_region(
             || "poseidon region", 
             |region| {
@@ -329,10 +330,14 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
     
                 //println!("[in circuit] expected: {:?}", expected.value());
     
+                println!("challenge: {:?}", challenge);
+                println!("expected: {:?}", expected);
                 main_gate.assert_equal(ctx, &challenge, &expected)?;
                 Ok(())
         })?;
+        */
 
+        
         // Poseidon Encryption
         layouter.assign_region(
             || "poseidon encryption", 
@@ -348,18 +353,37 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                     cipherByteSize: CIPHER_SIZE_TEST * (F::NUM_BITS as usize) / (8 as usize),
                     cipher: [F::ZERO; CIPHER_SIZE_TEST],
                 };
+                // inputs: Value<Vec<F>>,
+                self.inputs.clone().map(|e| {
+                    // == Native - Poseidon Encryption ==//
+                    cipher.encrypt(&e[..], &F::ONE);
+                });
+                println!("native cipher: {:?}", cipher.cipher);
+                let mut native_cipher = vec![];
+                for e in cipher.cipher.clone() {
+                    let e = main_gate.assign_value(ctx, Value::known(e.clone()))?;
+                    native_cipher.push(e);
+                }
+
+                // == ciruit ==//
                 let initial_state = cipher.initial_state(F::ONE);
 
                 // assign initial_state into cells.
                 let mut hasher_chip = HasherChip::<F, NUMBER_OF_LIMBS, BIT_LEN_LIMB, T, RATE>::new(ctx, &self.spec, &config.main_gate_config)?;
-                let mut input_intial = vec![];
+                //let mut input_intial = vec![];
                 for e in initial_state {
                     let e = main_gate.assign_value(ctx, Value::known(e))?;
-                    //hasher_chip.update(&[e.clone()]);
-                    input_intial.push(e);
+                    hasher_chip.update(&[e.clone()]);
+                    //input_intial.push(e);
                 }
-                // !!!!!! = zeroknight - should be uncommented
-                //hasher_chip.permutation(ctx, input_intial.clone())?;
+                // !!!!!! = zeroknight - permutation doesn't work..
+                // !!!!!! 
+                // hasher_chip.permutation(ctx, input_intial.clone())?;
+                hasher_chip.hash(ctx);
+                let states = hasher_chip.state.0.to_vec();
+                // println!("length: {:?}", states.len()); // 5, the same as T
+                println!("hashed states: {:?}", states);
+                
 
                 // assign message (inputs) into cells
                 let mut message_state = vec![];
@@ -369,32 +393,81 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                     message_state.push(e);
                 }
 
+                let mut cipher_text = vec![];
+                let mut next_states = hasher_chip.state.0.to_vec().clone();
                 (0..MESSAGE_CAPACITY_TEST).for_each(|i| {
                     //let mut current_states = hasher_chip.absorbing.clone();
-                    let mut current_states = hasher_chip.absorbing.clone();
-                    println!("length : {}", current_states.len());
-                    if current_states.len() == 0 {} // zeroknight.. should not be 0
-                    else {
-                        if i < message_state.len() {
-                            current_states[i+1] = main_gate.add(ctx, &current_states[i+1], &message_state[i]).unwrap();
-                        } else {
-                            let zero = main_gate.assign_constant(ctx, F::ZERO).unwrap();
-                            current_states[i+1] = main_gate.add(ctx, &current_states[i+1], &zero).unwrap();
-                        }
+                    // println!("length : {}", current_states.len());
+                    if i < message_state.len() {
+                        next_states[i+1] = main_gate.add(ctx, &next_states[i+1], &message_state[i]).unwrap();
+                    } else {
+                        let zero = main_gate.assign_constant(ctx, F::ZERO).unwrap();
+                        next_states[i+1] = main_gate.add(ctx, &next_states[i+1], &zero).unwrap();
                     }
+
                     // [WIP] cipher[i] = state[i + 1];
+                    next_states[i+1].value().map(|e| {
+                        cipher_text.push(main_gate.assign_value(ctx, Value::known(*e)).unwrap());
+                    });
                 });
 
-                // [WIP] hasher.update(&state);
+                // [Native] hasher.update(&state);
+                let mut hasher_chip_2 = HasherChip::<F, NUMBER_OF_LIMBS, BIT_LEN_LIMB, T, RATE>::new(ctx, &self.spec, &config.main_gate_config)?;
+                hasher_chip_2.update(&next_states[..]);
 
-                // [WIP] cipher[MESSAGE_CAPACITY_TEST] = state[1];
+                // [Native] cipher[MESSAGE_CAPACITY_TEST] = state[1];
+                let mut next_states_2 = hasher_chip.state.0.to_vec().clone();
+                let tmp = next_states_2[1].value().map(|e| {
+                    cipher_text.push(main_gate.assign_value(ctx, Value::known(*e)).unwrap());                    
+                });
 
-                // [WIP] cipher == self.encrypted
-
+                println!("cipher: {:?}", cipher_text);
+                println!("native cipher: {:?}", native_cipher );
+                // [WIP]
+                // should be equal : cipher.cipher vs cipher_text
+//                main_gate.assert_equal(ctx, &cipher_text[0], &native_cipher[0]);
+//                main_gate.assert_equal(ctx, &cipher_text[1], &native_cipher[1]);
+//                main_gate.assert_equal(ctx, &cipher_text[2], &native_cipher[2]);
                 Ok(())
 
         })?;
+        
 
+        // Poseidon Hash Test : Passed!!
+        /*
+        layouter.assign_region(
+            || "poseidon encryption", 
+            |region| {
+                
+                let offset = 0;
+                let ctx = &mut RegionCtx::new(region, offset);
+
+                let mut cipher = PoseidonCipherTest::<F, T, RATE> {
+                    r_f: 8,
+                    r_p: 57,
+                    cipherKey: self.key.clone(),
+                    cipherByteSize: CIPHER_SIZE_TEST * (F::NUM_BITS as usize) / (8 as usize),
+                    cipher: [F::ZERO; CIPHER_SIZE_TEST],
+                };
+                self.inputs.clone().map(|e| {
+                    // == Native - Poseidon Encryption ==//
+                    println!("native_hash : {:?}",cipher.hash(&e[..]));
+                });
+
+                let mut hasher_chip = HasherChip::<F, NUMBER_OF_LIMBS, BIT_LEN_LIMB, T, RATE>::new(ctx, &self.spec, &config.main_gate_config)?;
+                
+                for e in self.inputs.as_ref().transpose_vec(self.n_hash) {
+                    let e = main_gate.assign_value(ctx, e.map(|v| *v))?;
+                    // println!("intpus_cell : {:?}", e.value());
+                    hasher_chip.update(&[e.clone()]);
+                }
+                // constrain squeezing new challenge
+                let challenge = hasher_chip.hash(ctx)?;
+
+                println!("circuit hash : {:?}", challenge);              
+                Ok(())
+        })?;
+        */
 
         Ok(())
     }

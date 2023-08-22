@@ -373,8 +373,6 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
     fn synthesize(&self, config: Self::Config, mut layouter: impl Layouter<F>) -> Result<(), Error> {
         let mut main_gate = MainGate::<F>::new(config.poseidonCipherConfig.main_gate_config.clone());
         let rsa_chip = self.rsa_chip(config.poseidonCipherConfig.rsa_config.clone());
-
-
         // zeroknight - from DK
         rsa_chip.bigint_chip().range_chip().load_table(&mut layouter)?;
 
@@ -399,13 +397,13 @@ pub struct PoseidonCipherChip<F,
                 ::new(ctx, &self.spec, rsa_chip.clone())?;
             let secret = poseidon_cipher_chip.calculate_cipher_key(ctx, self.x.clone(), self.e.clone(), self.n.clone())?;
 
-            let temp = secret.to_big_uint(LIMB_WIDTH_RSA).map(|e| e);
+            println!("secret: {:?}", secret);
 
 /* // zeroknight : 먼저 위 calculate_cipher_key 테스트!!!
 
             let key = PoseidonCipherKey::<F>{
-                key0: F::random(OsRng), // zeroknight : should be derived from 'secret'
-                key1: F::random(OsRng),
+                key0: .., // zeroknight : should be derived from 'secret'
+                key1: ..,
             };
             let nonce = F::random(OsRng);
             let message = vec![F::random(OsRng);2];
