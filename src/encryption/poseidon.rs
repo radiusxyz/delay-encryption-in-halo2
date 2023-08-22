@@ -212,20 +212,22 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Po
 
         // zeroknight : permutation is update in Poseidon
         hasher.update(&state);
-
-
+        println!("state: {:?}", hasher.state );
+        let mut state_2 = hasher.state.words().clone();
+        
         (0..MESSAGE_CAPACITY_TEST).for_each(|i| {
-            state[i + 1] += if i < message.len() {
+            state_2[i + 1] += if i < message.len() {
                 message[i]
             } else {
                 F::ZERO
             };
 
-            cipher[i] = state[i + 1];
+            cipher[i] = state_2[i + 1];
         });
-        hasher.update(&state);
+        hasher.update(&state_2);
 
-        cipher[MESSAGE_CAPACITY_TEST] = state[1];
+        let mut state_3 = hasher.state.words().clone();
+        cipher[MESSAGE_CAPACITY_TEST] = state_3[1];
 
         self.cipher = cipher;
 
@@ -238,15 +240,17 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Po
         let mut state = self.initial_state(*nonce);
 
         hasher.update(&mut state);
+        let mut state_2 = hasher.state.words().clone();
 
         (0..MESSAGE_CAPACITY_TEST).for_each(|i|{
-            message[i] = self.cipher[i] - state[i+1];
-            state[i+1] = self.cipher[i];
+            message[i] = self.cipher[i] - state_2[i+1];
+            state_2[i+1] = self.cipher[i];
         });
 
-        hasher.update(&mut state);
+        hasher.update(&mut state_2);
+        let mut state_3 = hasher.state.words().clone();
         
-        if self.cipher[MESSAGE_CAPACITY_TEST] != state[1] {
+        if self.cipher[MESSAGE_CAPACITY_TEST] != state_3[1] {
             return None;
         }
         Some(message)
