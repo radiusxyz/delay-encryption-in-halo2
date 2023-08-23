@@ -306,14 +306,17 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
 
     fn synthesize(&self, config: Self::Config, mut layouter: impl Layouter<F>) -> Result<(), Error> {
         let mut main_gate = MainGate::<F>::new(config.main_gate_config.clone());
-        /*
+        
+        
         layouter.assign_region(
             || "poseidon region", 
             |region| {
                 let offset = 0;
                 let ctx = &mut RegionCtx::new(region, offset);
                 let mut hasher_chip = HasherChip::<F, NUMBER_OF_LIMBS, BIT_LEN_LIMB, T, RATE>::new(ctx, &self.spec, &config.main_gate_config )?;
-    
+                
+                println!("hasher_chip state : {:?}", hasher_chip.state.0.to_vec());
+
                 // inputs
                 for e in self.inputs.as_ref().transpose_vec(self.n_hash) {
                     let e = main_gate.assign_value(ctx, e.map(|v| *v))?;
@@ -335,7 +338,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 main_gate.assert_equal(ctx, &challenge, &expected)?;
                 Ok(())
         })?;
-        */
+        
 
         
         // Poseidon Encryption
@@ -358,7 +361,6 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                     // == Native - Poseidon Encryption ==//
                     cipher.encrypt(&e[..], &F::ONE);
                 });
-                println!("native cipher: {:?}", cipher.cipher);
                 let mut native_cipher = vec![];
                 for e in cipher.cipher.clone() {
                     let e = main_gate.assign_value(ctx, Value::known(e.clone()))?;
@@ -371,19 +373,28 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 // assign initial_state into cells.
                 let mut hasher_chip = HasherChip::<F, NUMBER_OF_LIMBS, BIT_LEN_LIMB, T, RATE>::new(ctx, &self.spec, &config.main_gate_config)?;
                 //let mut input_intial = vec![];
+                
+                println!("zk_hasher state: {:?}", hasher_chip.state.0);
+
+                // transpose_vec
+                let temp = Value::known(initial_state.to_vec().clone());
+                for e in temp.transpose_vec(5) {
+                    let e = main_gate.assign_value(ctx, e.map(|v| v))?;
+                    hasher_chip.update(&[e.clone()]);
+                }
+                /*
                 for e in initial_state {
                     let e = main_gate.assign_value(ctx, Value::known(e))?;
                     hasher_chip.update(&[e.clone()]);
                     //input_intial.push(e);
                 }
+                */
                 // !!!!!! = zeroknight - permutation doesn't work..
                 // !!!!!! 
                 // hasher_chip.permutation(ctx, input_intial.clone())?;
-                hasher_chip.hash(ctx);
+                hasher_chip.hash(ctx)?;
                 let states = hasher_chip.state.0.to_vec();
-                // println!("length: {:?}", states.len()); // 5, the same as T
-                println!("hashed states: {:?}", states);
-                
+                println!("zk_hasher state2: {:?}", states);
 
                 // assign message (inputs) into cells
                 let mut message_state = vec![];
@@ -425,13 +436,16 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 println!("native cipher: {:?}", native_cipher );
                 // [WIP]
                 // should be equal : cipher.cipher vs cipher_text
-//                main_gate.assert_equal(ctx, &cipher_text[0], &native_cipher[0]);
-//                main_gate.assert_equal(ctx, &cipher_text[1], &native_cipher[1]);
-//                main_gate.assert_equal(ctx, &cipher_text[2], &native_cipher[2]);
+                if cipher_text.len() > 0 {
+                    println!("check out equality..");
+                    main_gate.assert_equal(ctx, &cipher_text[0], &native_cipher[0]);
+                    main_gate.assert_equal(ctx, &cipher_text[1], &native_cipher[1]);
+                    main_gate.assert_equal(ctx, &cipher_text[2], &native_cipher[2]);
+                }
+
                 Ok(())
 
         })?;
-        
 
         // Poseidon Hash Test : Passed!!
         /*
@@ -492,7 +506,7 @@ fn test_poseidon_encryption() {
             key1: F::random(OsRng),
         };
 
-        let mut cipher = PoseidonCipherTest::<F, 5, 4> {
+        let mut cipher = PoseidonCipherTest::<F, T, RATE> {
             r_f: 8,
             r_p: 57,
             cipherKey: key.clone(),
@@ -505,7 +519,6 @@ fn test_poseidon_encryption() {
         println!("Messages.: {:?}", message);
         println!("Encrypted: {:?}", cipher.cipher);
         println!("Decrypted: {:?}", cipher.decrypt(&F::ONE).unwrap());
-
 
         //========== Circuit =============//
         let key = PoseidonCipherKey::<F> {

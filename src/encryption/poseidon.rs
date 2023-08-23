@@ -207,12 +207,18 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Po
 
         let mut hasher = Poseidon::<F, T, RATE>::new(self.r_f, self.r_p);
 
+        println!("ref_hahser state: {:?}", hasher.state.words().clone());
+
         let mut cipher = [F::ZERO; CIPHER_SIZE_TEST];
         let mut state = self.initial_state(*nonce);
 
         // zeroknight : permutation is update in Poseidon
         hasher.update(&state);
-        println!("state: {:?}", hasher.state );
+        hasher.squeeze();
+
+        println!("ref_hahser state2: {:?}", hasher.state.words().clone());
+
+
         let mut state_2 = hasher.state.words().clone();
         
         (0..MESSAGE_CAPACITY_TEST).for_each(|i| {
@@ -225,6 +231,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Po
             cipher[i] = state_2[i + 1];
         });
         hasher.update(&state_2);
+        hasher.squeeze();
 
         let mut state_3 = hasher.state.words().clone();
         cipher[MESSAGE_CAPACITY_TEST] = state_3[1];
@@ -240,6 +247,8 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Po
         let mut state = self.initial_state(*nonce);
 
         hasher.update(&mut state);
+        hasher.squeeze();
+
         let mut state_2 = hasher.state.words().clone();
 
         (0..MESSAGE_CAPACITY_TEST).for_each(|i|{
@@ -248,6 +257,8 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Po
         });
 
         hasher.update(&mut state_2);
+        hasher.squeeze();
+
         let mut state_3 = hasher.state.words().clone();
         
         if self.cipher[MESSAGE_CAPACITY_TEST] != state_3[1] {
@@ -257,6 +268,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Po
 
     }
 }
+
 
 #[test]
 fn test_poseidon_encryption_simple() {
@@ -282,7 +294,6 @@ fn test_poseidon_encryption_simple() {
 
     cipher.encrypt(&message, &bn256::Fr::ONE);
     println!("encrypted: {:?}", cipher.cipher);
-
     println!("decrypted : {:?}", cipher.decrypt(&bn256::Fr::ONE));
 
 }

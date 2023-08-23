@@ -22,6 +22,7 @@ pub struct HasherChip<
     pub state: AssignedState<F, T>,
     pub absorbing: Vec<AssignedValue<F>>,
     spec: Spec<F, T, RATE>,
+
     main_gate_config: MainGateConfig,
 }
 
@@ -46,6 +47,7 @@ impl<
             .words()
             .iter()
             .map(|word| main_gate.assign_constant(ctx, *word))
+            //.map(|e| main_gate.assign_constant(ctx, F::ZERO.mul(e)))
             .collect::<Result<Vec<AssignedValue<F>>, Error>>()?;
 
         Ok(Self {
