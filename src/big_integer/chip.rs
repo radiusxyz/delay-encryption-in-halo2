@@ -734,7 +734,7 @@ impl<F: PrimeField> BigIntInstructions<F> for BigIntChip<F> {
         for e_bit in e_bits.into_iter() {
             let cur_sq = squared;
             // Square `squared`.
-            squared = self.square_mod(ctx, &cur_sq, n)?;   // zeroknight : add reference
+            squared = self.square_mod(ctx, &cur_sq, n)?; // zeroknight : add reference
             if !e_bit {
                 continue;
             }
@@ -1161,7 +1161,7 @@ impl<F: PrimeField> BigIntInstructions<F> for BigIntChip<F> {
     }
 }
 
-// zeroknight - use ff::Primefield 
+// zeroknight - use ff::Primefield
 impl<F: PrimeField> BigIntChip<F> {
     /// The number of lookup column used in the [`RangeChip`].
     pub(crate) const NUM_LOOKUP_LIMBS: usize = 8;
@@ -1455,16 +1455,16 @@ mod test {
                         n,
                         _f: PhantomData,
                     };
-                      
+
                     let public_inputs = vec![vec![]];
                     let k = 16;
-                    
+
                     let prover = match MockProver::run(k, &circuit, public_inputs) {
                         Ok(prover) => prover,
                         Err(e) => panic!("{:#?}", e)
                     };
                     assert_eq!(prover.verify().is_err(), $should_be_error);
-                    
+
                 }
 
                 use halo2wrong::curves::bn256::Fq as BnFq;
@@ -2823,9 +2823,8 @@ mod test {
                     let one = bigint_chip.assign_constant_fresh(ctx, BigUint::from(1usize))?;
                     let n = one.num_limbs();
                     let one_muled = bigint_chip.mul(ctx, &one, &one)?;
-                    let zero = AssignedLimb::from(
-                        bigint_chip.main_gate().assign_constant(ctx, F::ZERO)?,
-                    );
+                    let zero =
+                        AssignedLimb::from(bigint_chip.main_gate().assign_constant(ctx, F::ZERO)?);
                     bigint_chip.assert_equal_muled(ctx, &one.to_muled(zero), &one_muled, n, n)?;
                     Ok(())
                 },

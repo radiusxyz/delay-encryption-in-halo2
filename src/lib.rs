@@ -4,38 +4,51 @@ use std::marker::PhantomData;
 pub use big_integer::*;
 
 pub mod rsa;
-use encryption::{poseidon::{PoseidonCipherTest, PoseidonCipherKey, CIPHER_SIZE_TEST, MESSAGE_CAPACITY_TEST}, PoseidonCipherInstructions};
+pub use crate::rsa::*;
+use encryption::{
+    poseidon::{PoseidonCipherKey, PoseidonCipherTest, CIPHER_SIZE_TEST, MESSAGE_CAPACITY_TEST},
+    PoseidonCipherInstructions,
+};
 use hash::hasher::HasherChip;
 use rand_core::OsRng;
-pub use rsa::*;
 
 pub mod hash;
 pub use hash::*;
 
 pub mod poseidon;
-pub use poseidon::*;
-
+pub use crate::poseidon::*;
+// pub mod poseidon::{Poseidon, Spec};
+// pub use crate::poseidon::Poseidon;
 pub mod encryption;
 
-use ff::{PrimeField, FromUniformBytes};
+use ff::{FromUniformBytes, PrimeField};
 use num_bigint::{BigUint, RandomBits};
 
-use halo2wrong::{halo2::{ 
-    plonk::{Circuit, ConstraintSystem},
-    circuit::{SimpleFloorPlanner, Layouter},
-}, RegionCtx, curves::{CurveAffine, bn256::{self, G1Affine}}};
+use halo2wrong::{
+    curves::{
+        bn256::{self, G1Affine},
+        CurveAffine,
+    },
+    halo2::{
+        circuit::{Layouter, SimpleFloorPlanner},
+        plonk::{Circuit, ConstraintSystem},
+    },
+    RegionCtx,
+};
 
 use halo2wrong::halo2::plonk::Error;
 
-use halo2::{circuit::{layouter, Region}, plonk::Challenge};
-use maingate::{MainGate, RangeChip, decompose_big, RangeInstructions, MainGateConfig, RangeConfig, MainGateInstructions, mock_prover_verify};
+use halo2::{
+    circuit::{layouter, Region},
+    plonk::Challenge,
+};
+use maingate::{
+    decompose_big, mock_prover_verify, MainGate, MainGateConfig, MainGateInstructions, RangeChip,
+    RangeConfig, RangeInstructions,
+};
 
-use ecc::{EccConfig, integer::rns::Rns, BaseFieldEccChip};
 use ecc::halo2::circuit::Value;
-
-use ::poseidon::{Spec, Poseidon};
-//use ::rsa::PublicKeyParts;
-
+use ecc::{integer::rns::Rns, BaseFieldEccChip, EccConfig};
 
 // Poseidon Constants
 const NUMBER_OF_LIMBS: usize = 4;
@@ -50,19 +63,18 @@ struct DelayEncCircuitConfig {
     main_gate_config: MainGateConfig,
 }
 
-struct DelayEncryptCircuit<F: PrimeField , const T: usize, const RATE: usize> {
+struct DelayEncryptCircuit<F: PrimeField, const T: usize, const RATE: usize> {
     // RSA
-    n : BigUint,
-    e : BigUint,
-    x : BigUint,        // base integer
+    n: BigUint,
+    e: BigUint,
+    x: BigUint, // base integer
     _f: PhantomData<F>,
 
     // Poseidon
-    spec: Spec<F, T, RATE>, // zeroknight : struct poseidon::Spec 
+    spec: Spec<F, T, RATE>, // zeroknight : struct poseidon::Spec
     n_hash: usize,
     inputs: Value<Vec<F>>,
     expected: Value<F>,
-
 }
 
 impl<F: PrimeField, const T: usize, const RATE: usize> DelayEncryptCircuit<F, T, RATE> {
@@ -76,9 +88,9 @@ impl<F: PrimeField, const T: usize, const RATE: usize> DelayEncryptCircuit<F, T,
     }
 }
 
-impl<F: PrimeField, const T: usize, const RATE: usize> Circuit<F> 
-    for DelayEncryptCircuit<F, T, RATE> {
-
+impl<F: PrimeField, const T: usize, const RATE: usize> Circuit<F>
+    for DelayEncryptCircuit<F, T, RATE>
+{
     type Config = DelayEncCircuitConfig;
     type FloorPlanner = SimpleFloorPlanner;
 
@@ -91,12 +103,11 @@ impl<F: PrimeField, const T: usize, const RATE: usize> Circuit<F>
 
     fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
         let main_gate_config = MainGate::<F>::configure(meta);
-        let (composition_bit_lens, overflow_bit_lens) = 
-            RSAChip::<F>::compute_range_lens(
-                Self::BITS_LEN / Self::LIMB_WIDTH,
-            );
-        
-        let range_config = RangeChip::<F>::configure( // meta, main_gate_config, composition_bit_lens, overflow_bit_lens)
+        let (composition_bit_lens, overflow_bit_lens) =
+            RSAChip::<F>::compute_range_lens(Self::BITS_LEN / Self::LIMB_WIDTH);
+
+        let range_config = RangeChip::<F>::configure(
+            // meta, main_gate_config, composition_bit_lens, overflow_bit_lens)
             meta,
             &main_gate_config,
             composition_bit_lens,
@@ -115,12 +126,14 @@ impl<F: PrimeField, const T: usize, const RATE: usize> Circuit<F>
         }
     }
 
-    fn synthesize(&self, config: Self::Config, mut layouter: impl halo2wrong::halo2::circuit::Layouter<F>) -> Result<(), halo2wrong::halo2::plonk::Error> {
-        
+    fn synthesize(
+        &self,
+        config: Self::Config,
+        mut layouter: impl halo2wrong::halo2::circuit::Layouter<F>,
+    ) -> Result<(), halo2wrong::halo2::plonk::Error> {
         // poseidoncipherchip = new();
         // enc_key = pcc.calucation_key();
         // pcc.encrypt_message (enc_key);
-
 
         // === RSA based Time-lock === //
         let rsa_chip = self.rsa_chip(config.rsa_config.clone());
@@ -128,28 +141,27 @@ impl<F: PrimeField, const T: usize, const RATE: usize> Circuit<F>
         let limb_width = Self::LIMB_WIDTH;
         let num_limbs = Self::BITS_LEN / Self::LIMB_WIDTH;
 
-        layouter.assign_region( //name, assignment)
+        layouter.assign_region(
+            //name, assignment)
             || "rsa modpow with 2048 bits",
             |region| {
                 let offset = 0;
                 let ctx = &mut RegionCtx::new(region, offset);
                 let e_limbs = decompose_big::<F>// (e, number_of_limbs, bit_len)
-                    (self.e.clone(), 1, Self::EXP_LIMB_BITS);   // EXP_LIMB_BITS 5
+                    (self.e.clone(), 1, Self::EXP_LIMB_BITS); // EXP_LIMB_BITS 5
                 let e_unassigned = UnassignedInteger::from(e_limbs);
                 let e_var = RSAPubE::Var(e_unassigned);
                 let e_fix = RSAPubE::Fix(BigUint::from(Self::DEFAULT_E));
 
-                let n_limbs = decompose_big::<F>(self.n.clone(), 
-                                num_limbs, limb_width);
+                let n_limbs = decompose_big::<F>(self.n.clone(), num_limbs, limb_width);
                 let n_unassigned = UnassignedInteger::from(n_limbs);
-                
+
                 let public_key_var = RSAPublicKey::new(n_unassigned.clone(), e_var);
                 let public_key_var = rsa_chip.assign_public_key(ctx, public_key_var)?;
                 let public_key_fix = RSAPublicKey::new(n_unassigned, e_fix);
                 let public_key_fix = rsa_chip.assign_public_key(ctx, public_key_fix)?;
 
-                let x_limbs = decompose_big::<F>(self.x.clone(), 
-                                    num_limbs, limb_width);
+                let x_limbs = decompose_big::<F>(self.x.clone(), num_limbs, limb_width);
                 let x_unssigned = UnassignedInteger::from(x_limbs);
                 // Assigns a variable AssignedInteger whose RangeType is Fresh.
                 //Returns a new AssignedInteger. The bit length of each limb is less than self.limb_width, and the number of its limbs is self.num_limbs.
@@ -159,7 +171,8 @@ impl<F: PrimeField, const T: usize, const RATE: usize> Circuit<F>
                 let powed_fix = rsa_chip.modpow_public_key(ctx, &x_assigned, &public_key_fix)?;
 
                 let valid_powed_var = big_pow_mod(&self.x, &self.e, &self.n);
-                let valid_powed_fix = big_pow_mod(&self.x, &BigUint::from(Self::DEFAULT_E), &self.n);
+                let valid_powed_fix =
+                    big_pow_mod(&self.x, &BigUint::from(Self::DEFAULT_E), &self.n);
 
                 let valid_powed_var = bigint_chip.assign_constant_fresh(ctx, valid_powed_var)?;
                 let valid_powed_fix = bigint_chip.assign_constant_fresh(ctx, valid_powed_fix)?;
@@ -174,44 +187,47 @@ impl<F: PrimeField, const T: usize, const RATE: usize> Circuit<F>
 
         let mut main_gate = MainGate::<F>::new(config.main_gate_config.clone());
         layouter.assign_region(
-        || "poseidon region", 
-        |region| {
-            let offset = 0;
-            let ctx = &mut RegionCtx::new(region, offset);
-            let mut hasher_chip = HasherChip::<F, NUMBER_OF_LIMBS, BIT_LEN_LIMB, T, RATE>::new(ctx, &self.spec, &config.main_gate_config )?;
+            || "poseidon region",
+            |region| {
+                let offset = 0;
+                let ctx = &mut RegionCtx::new(region, offset);
+                let mut hasher_chip = HasherChip::<F, NUMBER_OF_LIMBS, BIT_LEN_LIMB, T, RATE>::new(
+                    ctx,
+                    &self.spec,
+                    &config.main_gate_config,
+                )?;
 
-            // inputs
-            for e in self.inputs.as_ref().transpose_vec(self.n_hash) {
-                let e = main_gate.assign_value(ctx, e.map(|v| *v))?;
-                // println!("intpus_cell : {:?}", e.value());
-                hasher_chip.update(&[e.clone()]);
-            }
-            // constrain squeezing new challenge
-            let challenge = hasher_chip.hash(ctx)?;
+                // inputs
+                for e in self.inputs.as_ref().transpose_vec(self.n_hash) {
+                    let e = main_gate.assign_value(ctx, e.map(|v| *v))?;
+                    // println!("intpus_cell : {:?}", e.value());
+                    hasher_chip.update(&[e.clone()]);
+                }
+                // constrain squeezing new challenge
+                let challenge = hasher_chip.hash(ctx)?;
 
-            //println!("[in circuit] inputs: {:?}",self.inputs);
-            //println!("[in circuit] challenge: {:?}", challenge.value());
+                //println!("[in circuit] inputs: {:?}",self.inputs);
+                //println!("[in circuit] challenge: {:?}", challenge.value());
 
-            let expected = main_gate.assign_value(ctx, self.expected)?;
+                let expected = main_gate.assign_value(ctx, self.expected)?;
 
-            //println!("[in circuit] expected: {:?}", expected.value());
+                //println!("[in circuit] expected: {:?}", expected.value());
 
-            main_gate.assert_equal(ctx, &challenge, &expected)?;
-            Ok(())
-        })?;
+                main_gate.assert_equal(ctx, &challenge, &expected)?;
+                Ok(())
+            },
+        )?;
 
         // Poseidon Encryption
 
-        
         Ok(())
     }
 }
 
 #[test]
 fn test_modpow_2048_circuit() {
-
-    use rand::{thread_rng, Rng};
     use halo2wrong::halo2::dev::MockProver;
+    use rand::{thread_rng, Rng};
 
     // FromUniformBytes : Trait for constructing a PrimeField element from a fixed-length uniform byte array.
     fn run<F: FromUniformBytes<64> + Ord, const T: usize, const RATE: usize>() {
@@ -221,14 +237,16 @@ fn test_modpow_2048_circuit() {
         while n.bits() != bits_len {
             n = rng.sample(RandomBits::new(bits_len));
         }
-        let e = rng.sample::<BigUint, _>(RandomBits::new(DelayEncryptCircuit::<F, T, RATE>::EXP_LIMB_BITS as u64)) % &n;
-        let x = rng.sample::<BigUint,_>(RandomBits::new(bits_len)) % &n;
+        let e = rng.sample::<BigUint, _>(RandomBits::new(
+            DelayEncryptCircuit::<F, T, RATE>::EXP_LIMB_BITS as u64,
+        )) % &n;
+        let x = rng.sample::<BigUint, _>(RandomBits::new(bits_len)) % &n;
 
         //params for Poseidon
         let mut ref_hasher = Poseidon::<F, T, RATE>::new(8, 57);
         // Given number of round parameters constructs new Posedion instance calculating unoptimized round constants with reference Grain then calculates optimized constants and sparse matrices
         let spec = Spec::<F, T, RATE>::new(8, 57);
-        let inputs = (0..(3*T)).map(|_| F::random(OsRng)).collect::<Vec<F>>();
+        let inputs = (0..(3 * T)).map(|_| F::random(OsRng)).collect::<Vec<F>>();
         ref_hasher.update(&inputs[..]);
         let expected = ref_hasher.squeeze();
         //println!("inputs: {:?}",inputs);
@@ -240,8 +258,8 @@ fn test_modpow_2048_circuit() {
             x,
             _f: PhantomData,
             // poseidon
-            spec: spec.clone(), // zeroknight : struct poseidon::Spec 
-            n_hash: 3*T,
+            spec: spec.clone(), // zeroknight : struct poseidon::Spec
+            n_hash: 3 * T,
             inputs: Value::known(inputs),
             expected: Value::known(expected),
         };
@@ -264,9 +282,7 @@ fn test_modpow_2048_circuit() {
     run::<BnFq, 5, 4>();
     //run::<PastaFp, 5, 4>();
     //run::<PastaFq, 5, 4>();
-
 }
-
 
 //======================= Poseidon Encryption ==================//
 #[derive(Clone)]
@@ -283,13 +299,15 @@ struct PECircuit<F: PrimeField + FromUniformBytes<64>, const T: usize, const RAT
     encrypted: Value<Vec<F>>,
 }
 
-impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> PECircuit<F, T, RATE> {
+impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize>
+    PECircuit<F, T, RATE>
+{
     const EXP_LIMB_BITS: usize = 5;
-
 }
 
 impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Circuit<F>
-    for PECircuit<F, T, RATE> {
+    for PECircuit<F, T, RATE>
+{
     type Config = PECircuitConfig;
     type FloorPlanner = SimpleFloorPlanner;
 
@@ -299,22 +317,27 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
 
     fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
         let main_gate_config = MainGate::<F>::configure(meta);
-        PECircuitConfig {
-            main_gate_config,
-        }
+        PECircuitConfig { main_gate_config }
     }
 
-    fn synthesize(&self, config: Self::Config, mut layouter: impl Layouter<F>) -> Result<(), Error> {
+    fn synthesize(
+        &self,
+        config: Self::Config,
+        mut layouter: impl Layouter<F>,
+    ) -> Result<(), Error> {
         let mut main_gate = MainGate::<F>::new(config.main_gate_config.clone());
-        
-        
+
         layouter.assign_region(
-            || "poseidon region", 
+            || "poseidon region",
             |region| {
                 let offset = 0;
                 let ctx = &mut RegionCtx::new(region, offset);
-                let mut hasher_chip = HasherChip::<F, NUMBER_OF_LIMBS, BIT_LEN_LIMB, T, RATE>::new(ctx, &self.spec, &config.main_gate_config )?;
-                
+                let mut hasher_chip = HasherChip::<F, NUMBER_OF_LIMBS, BIT_LEN_LIMB, T, RATE>::new(
+                    ctx,
+                    &self.spec,
+                    &config.main_gate_config,
+                )?;
+
                 println!("hasher_chip state : {:?}", hasher_chip.state.0.to_vec());
 
                 // inputs
@@ -325,27 +348,25 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 }
                 // constrain squeezing new challenge
                 let challenge = hasher_chip.hash(ctx)?;
-    
+
                 //println!("[in circuit] inputs: {:?}",self.inputs);
                 //println!("[in circuit] challenge: {:?}", challenge.value());
-    
+
                 let expected = main_gate.assign_value(ctx, self.expected)?;
-    
+
                 //println!("[in circuit] expected: {:?}", expected.value());
-    
+
                 println!("challenge: {:?}", challenge);
                 println!("expected: {:?}", expected);
                 main_gate.assert_equal(ctx, &challenge, &expected)?;
                 Ok(())
-        })?;
-        
+            },
+        )?;
 
-        
         // Poseidon Encryption
         layouter.assign_region(
-            || "poseidon encryption", 
+            || "poseidon encryption",
             |region| {
-
                 let offset = 0;
                 let ctx = &mut RegionCtx::new(region, offset);
 
@@ -371,9 +392,13 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 let initial_state = cipher.initial_state(F::ONE);
 
                 // assign initial_state into cells.
-                let mut hasher_chip = HasherChip::<F, NUMBER_OF_LIMBS, BIT_LEN_LIMB, T, RATE>::new(ctx, &self.spec, &config.main_gate_config)?;
+                let mut hasher_chip = HasherChip::<F, NUMBER_OF_LIMBS, BIT_LEN_LIMB, T, RATE>::new(
+                    ctx,
+                    &self.spec,
+                    &config.main_gate_config,
+                )?;
                 //let mut input_intial = vec![];
-                
+
                 println!("zk_hasher state: {:?}", hasher_chip.state.0);
 
                 // transpose_vec
@@ -390,7 +415,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 }
                 */
                 // !!!!!! = zeroknight - permutation doesn't work..
-                // !!!!!! 
+                // !!!!!!
                 // hasher_chip.permutation(ctx, input_intial.clone())?;
                 hasher_chip.hash(ctx)?;
                 let states = hasher_chip.state.0.to_vec();
@@ -398,8 +423,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
 
                 // assign message (inputs) into cells
                 let mut message_state = vec![];
-                for e in self.inputs.as_ref()
-                                    .transpose_vec(self.n_hash) {
+                for e in self.inputs.as_ref().transpose_vec(self.n_hash) {
                     let e = main_gate.assign_value(ctx, e.map(|v| *v))?;
                     message_state.push(e);
                 }
@@ -410,14 +434,17 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                     //let mut current_states = hasher_chip.absorbing.clone();
                     // println!("length : {}", current_states.len());
                     if i < message_state.len() {
-                        next_states[i+1] = main_gate.add(ctx, &next_states[i+1], &message_state[i]).unwrap();
+                        next_states[i + 1] = main_gate
+                            .add(ctx, &next_states[i + 1], &message_state[i])
+                            .unwrap();
                     } else {
                         let zero = main_gate.assign_constant(ctx, F::ZERO).unwrap();
-                        next_states[i+1] = main_gate.add(ctx, &next_states[i+1], &zero).unwrap();
+                        next_states[i + 1] =
+                            main_gate.add(ctx, &next_states[i + 1], &zero).unwrap();
                     }
 
                     cipher_text.push(next_states[i + 1].clone());
-                    /* 
+                    /*
                     // [WIP] cipher[i] = state[i + 1];
                     next_states[i+1].value().map(|e| {
                         //cipher_text.push(main_gate.assign_value(ctx, Value::known(*e)).unwrap());
@@ -427,17 +454,22 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 });
 
                 // [Native] hasher.update(&state);
-                let mut hasher_chip_2 = HasherChip::<F, NUMBER_OF_LIMBS, BIT_LEN_LIMB, T, RATE>::new(ctx, &self.spec, &config.main_gate_config)?;
+                let mut hasher_chip_2 =
+                    HasherChip::<F, NUMBER_OF_LIMBS, BIT_LEN_LIMB, T, RATE>::new(
+                        ctx,
+                        &self.spec,
+                        &config.main_gate_config,
+                    )?;
                 hasher_chip_2.update(&next_states[..]);
 
                 // [Native] cipher[MESSAGE_CAPACITY_TEST] = state[1];
                 let mut next_states_2 = hasher_chip.state.0.to_vec().clone();
                 let tmp = next_states_2[1].value().map(|e| {
-                    cipher_text.push(main_gate.assign_value(ctx, Value::known(*e)).unwrap());                    
+                    cipher_text.push(main_gate.assign_value(ctx, Value::known(*e)).unwrap());
                 });
 
                 println!("cipher: {:?}", cipher_text);
-                println!("native cipher: {:?}", native_cipher );
+                println!("native cipher: {:?}", native_cipher);
                 // [WIP]
                 // should be equal : cipher.cipher vs cipher_text
                 //if cipher_text.len() > 0 {
@@ -448,15 +480,15 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 //}
 
                 Ok(())
-
-        })?;
+            },
+        )?;
 
         // Poseidon Hash Test : Passed!!
         /*
         layouter.assign_region(
-            || "poseidon encryption", 
+            || "poseidon encryption",
             |region| {
-                
+
                 let offset = 0;
                 let ctx = &mut RegionCtx::new(region, offset);
 
@@ -473,7 +505,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 });
 
                 let mut hasher_chip = HasherChip::<F, NUMBER_OF_LIMBS, BIT_LEN_LIMB, T, RATE>::new(ctx, &self.spec, &config.main_gate_config)?;
-                
+
                 for e in self.inputs.as_ref().transpose_vec(self.n_hash) {
                     let e = main_gate.assign_value(ctx, e.map(|v| *v))?;
                     // println!("intpus_cell : {:?}", e.value());
@@ -482,7 +514,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 // constrain squeezing new challenge
                 let challenge = hasher_chip.hash(ctx)?;
 
-                println!("circuit hash : {:?}", challenge);              
+                println!("circuit hash : {:?}", challenge);
                 Ok(())
         })?;
         */
@@ -493,14 +525,13 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
 
 #[test]
 fn test_poseidon_encryption() {
-
     use crate::encryption::poseidon::*;
-    
+
     fn run<F: FromUniformBytes<64> + Ord, const T: usize, const RATE: usize>() {
         let mut ref_hasher = Poseidon::<F, T, RATE>::new(8, 57);
 
-        let spec = Spec::<F, T, RATE>::new(8,57);
-        let inputs = (0..(3*T)).map(|_| F::random(OsRng)).collect::<Vec<F>>();
+        let spec = Spec::<F, T, RATE>::new(8, 57);
+        let inputs = (0..(3 * T)).map(|_| F::random(OsRng)).collect::<Vec<F>>();
         ref_hasher.update(&inputs[..]);
         let expected = ref_hasher.squeeze();
 
@@ -517,7 +548,7 @@ fn test_poseidon_encryption() {
             cipherByteSize: CIPHER_SIZE_TEST * (F::NUM_BITS as usize) / 8,
             cipher: [F::ZERO; CIPHER_SIZE_TEST],
         };
-        
+
         let message = [F::random(OsRng), F::random(OsRng)];
         cipher.encrypt(&message, &F::ONE);
         println!("Messages.: {:?}", message);
@@ -526,17 +557,17 @@ fn test_poseidon_encryption() {
 
         //========== Circuit =============//
         let key = PoseidonCipherKey::<F> {
-            key0 : F::random(OsRng),
-            key1 : F::random(OsRng),
+            key0: F::random(OsRng),
+            key1: F::random(OsRng),
         };
 
         let circuit = PECircuit::<F, T, RATE> {
             spec: spec.clone(),
-            n_hash: 3*T,
+            n_hash: 3 * T,
             inputs: Value::known(inputs),
             key: key.clone(),
             expected: Value::known(expected),
-            encrypted: Value::known(cipher.cipher.to_vec()),    // Encrypted
+            encrypted: Value::known(cipher.cipher.to_vec()), // Encrypted
         };
 
         let public_inputs = vec![vec![]];
@@ -544,9 +575,5 @@ fn test_poseidon_encryption() {
     }
     use halo2wrong::curves::bn256::Fr as BnFr;
 
-    run::<BnFr, 5,4>();
+    run::<BnFr, 5, 4>();
 }
-
-
-
-

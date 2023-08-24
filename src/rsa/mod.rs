@@ -5,7 +5,11 @@ pub use instructions::*;
 
 use crate::big_integer::*;
 
-use halo2wrong::halo2::{arithmetic::Field, circuit::{Value, AssignedCell}, plonk::Error};
+use halo2wrong::halo2::{
+    arithmetic::Field,
+    circuit::{AssignedCell, Value},
+    plonk::Error,
+};
 
 use maingate::{
     big_to_fe, decompose_big, fe_to_big, AssignedValue, MainGate, MainGateConfig,
@@ -158,9 +162,7 @@ impl<F: PrimeField> RSASignatureVerifier<F> {
     /// # Return values
     /// Returns new [`RSASignatureVerifier`].
     pub fn new(rsa_chip: RSAChip<F>) -> Self {
-        Self {
-            rsa_chip,
-        }
+        Self { rsa_chip }
     }
 
     /// Given a RSA public key, signed message bytes, and a pkcs1v15 signature, verifies the signature with SHA256 hash function.
@@ -200,33 +202,35 @@ impl<F: PrimeField> RSASignatureVerifier<F> {
         let main_gate = rsa_chip.main_gate();
 
         let inputs = msg
-                    .into_iter()
-                    .map(|byte| Value::known(*byte))
-                    .collect::<Vec<Value<u8>>>();
+            .into_iter()
+            .map(|byte| Value::known(*byte))
+            .collect::<Vec<Value<u8>>>();
         let input_byte_size = inputs.len();
 
         const DIGEST_SIZE: usize = 8;
 
         let digest_values = layouter.assign_region(
-            || "inputs", 
+            || "inputs",
             |region| {
                 let ctx = &mut RegionCtx::new(region, 0);
 
-
                 let zero = main_gate.assign_constant(ctx, F::ZERO)?;
 
-                let values : [AssignedValue<F>; DIGEST_SIZE] = (0..input_byte_size)
-                        .map(|index| {
-                            main_gate.assign_value(ctx, Value::known(F::from_u128(msg[index] as u128))).unwrap()
-                        })
-                        .collect::<Vec<AssignedValue<F>>>()
-                        .try_into()
-                        .unwrap();
+                let values: [AssignedValue<F>; DIGEST_SIZE] = (0..input_byte_size)
+                    .map(|index| {
+                        main_gate
+                            .assign_value(ctx, Value::known(F::from_u128(msg[index] as u128)))
+                            .unwrap()
+                    })
+                    .collect::<Vec<AssignedValue<F>>>()
+                    .try_into()
+                    .unwrap();
 
                 //let assigned_inpu_byte_size = main_gate
                 //        .assign_value(ctx, Value::known(F::from_u128(input_byte_size as u128)))?;
                 Ok(values)
-            })?;
+            },
+        )?;
         /*
         let digest_values = layouter.assign_region(
                 || "",
@@ -396,7 +400,7 @@ mod test {
         };
     }
 
-/* // zeroknight - sha2 not supported atm..
+    /* // zeroknight - sha2 not supported atm..
     impl_rsa_signature_test_circuit!(
         TestRSASignatureWithHashConfig,
         TestRSASignatureWithHashCircuit,
@@ -804,7 +808,6 @@ mod test {
             Ok(())
         }
     );
-    
 
     /*#[test]
     #[should_panic]
