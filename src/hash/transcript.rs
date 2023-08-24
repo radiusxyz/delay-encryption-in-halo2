@@ -1,7 +1,7 @@
-use halo2::{arithmetic::CurveAffine, halo2curves::ff::PrimeField }; //, plonk::Error};
+use halo2::{arithmetic::CurveAffine, halo2curves::ff::PrimeField}; //, plonk::Error};
 use halo2wrong::halo2::plonk::Error;
 
-use crate::hasher::HasherChip;
+use crate::{hasher::HasherChip, poseidon};
 use maingate::{AssignedValue, RegionCtx};
 
 use ecc::{
@@ -166,20 +166,16 @@ impl<
 mod tests {
     // use halo2::circuit::Layouter;
     // use halo2::circuit::SimpleFloorPlanner;
-    use halo2wrong::halo2::circuit::{Layouter, SimpleFloorPlanner};
     use halo2::halo2curves::ff::{Field, PrimeField};
+    use halo2wrong::halo2::circuit::{Layouter, SimpleFloorPlanner};
     // use halo2::plonk::Error;
     use halo2wrong::halo2::plonk::Error;
 
     //use halo2::plonk::{Circuit, ConstraintSystem};
     use halo2wrong::halo2::plonk::{Circuit, ConstraintSystem};
-    
-    use maingate::mock_prover_verify;
-    use maingate::MainGate;
-    use maingate::MainGateConfig;
-    use maingate::{MainGateInstructions, RegionCtx};
+
     use crate::transcript::LimbRepresentation;
-    use crate::TranscriptChip;
+    use crate::{TranscriptChip, poseidon};
     use ecc::halo2::arithmetic::CurveAffine;
     use ecc::halo2::circuit::Value;
     use ecc::integer::rns::Rns;
@@ -188,6 +184,10 @@ mod tests {
     use ecc::maingate::RangeInstructions;
     use ecc::BaseFieldEccChip;
     use ecc::EccConfig;
+    use maingate::mock_prover_verify;
+    use maingate::MainGate;
+    use maingate::MainGateConfig;
+    use maingate::{MainGateInstructions, RegionCtx};
     use paste::paste;
     use poseidon::Poseidon;
     use poseidon::Spec;
@@ -309,7 +309,7 @@ mod tests {
     fn test_example() {
         //use crate::curves::bn256::{Fr, G1Affine};
         use halo2wrong::curves::bn256::{Fr, G1Affine};
-        for number_of_inputs in 0..3*3 {
+        for number_of_inputs in 0..3 * 3 {
             println!("{:?}", number_of_inputs);
             let mut ref_hasher = Poseidon::<Fr, 3, 2>::new(8, 57);
             let spec = Spec::<Fr, 3, 2>::new(8, 57);
@@ -329,7 +329,7 @@ mod tests {
             };
             let instance = vec![vec![]];
             mock_prover_verify(&circuit, instance);
-        }        
+        }
     }
 
     macro_rules! test {

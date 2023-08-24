@@ -1,13 +1,14 @@
 use maingate::{AssignedValue, MainGate, MainGateConfig, MainGateInstructions, RegionCtx, Term};
-//use halo2::{halo2curves::ff::PrimeField, plonk::Error};
-use halo2::{halo2curves::ff::PrimeField};
+use halo2::halo2curves::ff::PrimeField;
 use halo2wrong::halo2::plonk::Error;
 use poseidon::{SparseMDSMatrix, Spec, State};
+
+use crate::poseidon;
 
 /// `AssignedState` is composed of `T` sized assigned values
 #[derive(Debug, Clone)]
 //pub struct AssignedState<F: PrimeField, const T: usize>(pub(super) [AssignedValue<F>; T]);
-pub struct AssignedState<F: PrimeField, const T: usize>(pub [AssignedValue<F>; T]); // zeroknight : make 
+pub struct AssignedState<F: PrimeField, const T: usize>(pub [AssignedValue<F>; T]); // zeroknight : make
 
 /// `HasherChip` is basically responsible for contraining permutation part of
 /// transcript pipeline
@@ -298,7 +299,7 @@ impl<
         self.sbox_full(ctx, &[F::ZERO; T])?;
         self.apply_mds(ctx, &mds)?;
 
-        Ok(())  // zeroknight
+        Ok(()) // zeroknight
     }
 
     pub fn hash(&mut self, ctx: &mut RegionCtx<'_, F>) -> Result<AssignedValue<F>, Error> {
