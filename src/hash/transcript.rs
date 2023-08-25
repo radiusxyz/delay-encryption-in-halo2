@@ -157,7 +157,7 @@ impl<
     }
 
     // Constrain squeezing new challenge
-    pub fn squeeze(&mut self, ctx: &mut RegionCtx<'_, N>) -> Result<AssignedValue<N>, Error> {
+    pub fn perm_remain(&mut self, ctx: &mut RegionCtx<'_, N>) -> Result<AssignedValue<N>, Error> {
         self.hasher_chip.hash(ctx)
     }
 }
@@ -175,7 +175,7 @@ mod tests {
     use halo2wrong::halo2::plonk::{Circuit, ConstraintSystem};
 
     use crate::transcript::LimbRepresentation;
-    use crate::{TranscriptChip, poseidon};
+    use crate::{poseidon, TranscriptChip};
     use ecc::halo2::arithmetic::CurveAffine;
     use ecc::halo2::circuit::Value;
     use ecc::integer::rns::Rns;
@@ -291,9 +291,11 @@ mod tests {
                         println!("{:?}", e);
                         transcript_chip.write_scalar(&e);
                     }
-                    let challenge = transcript_chip.squeeze(ctx)?;
+                    let challenge = transcript_chip.perm_remain(ctx)?;
                     let expected = main_gate.assign_value(ctx, self.expected)?;
+                    // main_gate.assert_equal(ctx, &challenge, &expected)?;
                     main_gate.assert_equal(ctx, &challenge, &expected)?;
+                    // main_gate.assert_zero(ctx, &challenge)?;
 
                     Ok(())
                 },
@@ -318,8 +320,8 @@ mod tests {
                 .map(|_| Fr::random(OsRng))
                 .collect::<Vec<Fr>>();
 
-            ref_hasher.update(&inputs[..]);
-            let expected = ref_hasher.squeeze();
+            ref_hasher.perm_with_added_input(&inputs[..]);
+            let expected = ref_hasher.perm_remain();
 
             let circuit: TestCircuit<G1Affine, 3, 2> = TestCircuit {
                 spec: spec.clone(),
@@ -348,8 +350,8 @@ mod tests {
                             .map(|_| Fr::random(OsRng))
                             .collect::<Vec<Fr>>();
 
-                        ref_hasher.update(&inputs[..]);
-                        let expected = ref_hasher.squeeze();
+                        ref_hasher.perm_with_added_input(&inputs[..]);
+                        let expected = ref_hasher.perm_remain();
 
                         let circuit: TestCircuit<G1Affine, $T, $RATE> = TestCircuit {
                             spec: spec.clone(),

@@ -1,4 +1,4 @@
-use crate::poseidon::spec::{State, Spec};
+use crate::poseidon::spec::{Spec, State};
 use halo2curves::group::ff::{FromUniformBytes, PrimeField};
 
 /// Poseidon hasher that maintains state and inputs and yields single element
@@ -23,7 +23,7 @@ impl<F: FromUniformBytes<64>, const T: usize, const RATE: usize> Poseidon<F, T, 
 
     /// Appends elements to the absorption line updates state while `RATE` is
     /// full
-    pub fn update(&mut self, elements: &[F]) {
+    pub fn perm_with_added_input(&mut self, elements: &[F]) {
         let mut input_elements = self.absorbing.clone();
         input_elements.extend_from_slice(elements);
 
@@ -46,16 +46,12 @@ impl<F: FromUniformBytes<64>, const T: usize, const RATE: usize> Poseidon<F, T, 
     }
 
     /// Results a single element by absorbing already added inputs
-    pub fn squeeze(&mut self) -> F {
+    pub fn perm_remain(&mut self) -> F {
         let mut last_chunk = self.absorbing.clone();
         {
             // Expect padding offset to be in [0, RATE)
             debug_assert!(last_chunk.len() < RATE);
         }
-        // Add the finishing sign of the variable length hashing. Note that this mut
-        // also apply when absorbing line is empty
-        last_chunk.push(F::ONE);
-        // Add the last chunk of inputs to the state for the final permutation cycle
 
         for (input_element, state) in last_chunk.iter().zip(self.state.0.iter_mut().skip(1)) {
             state.add_assign(input_element);
@@ -94,8 +90,8 @@ mod tests {
         let number_of_inputs = RATE * number_of_permutation - 1;
         let inputs = gen_random_vec(number_of_inputs);
 
-        poseidon.update(&inputs[..]);
-        let result_0 = poseidon.squeeze();
+        poseidon.perm_with_added_input(&inputs[..]);
+        let result_0 = poseidon.perm_remain();
 
         let spec = poseidon.spec.clone();
         let mut inputs = inputs.clone();
@@ -121,8 +117,8 @@ mod tests {
         let inputs = (0..number_of_inputs)
             .map(|_| Fr::random(OsRng))
             .collect::<Vec<Fr>>();
-        poseidon.update(&inputs[..]);
-        let result_0 = poseidon.squeeze();
+        poseidon.perm_with_added_input(&inputs[..]);
+        let result_0 = poseidon.perm_remain();
 
         let spec = poseidon.spec.clone();
         let mut inputs = inputs.clone();
@@ -156,10 +152,10 @@ mod tests {
                             let chunk = (0..number_of_inputs)
                                 .map(|_| Fr::random(OsRng))
                                 .collect::<Vec<Fr>>();
-                            poseidon.update(&chunk[..]);
+                            poseidon.perm_with_added_input(&chunk[..]);
                             inputs.extend(chunk);
                         }
-                        let result_0 = poseidon.squeeze();
+                        let result_0 = poseidon.perm_remain();
 
                         // Accept below as reference and check consistency
                         inputs.push(Fr::one());

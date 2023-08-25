@@ -6,7 +6,9 @@ pub use big_integer::*;
 pub mod rsa;
 pub use crate::rsa::*;
 use encryption::{
-    poseidon::{PoseidonCipherKey, PoseidonCipherTest, CIPHER_SIZE_TEST, MESSAGE_CAPACITY_TEST},
+    poseidon_enc::{
+        PoseidonCipherKey, PoseidonCipherTest, CIPHER_SIZE_TEST, MESSAGE_CAPACITY_TEST,
+    },
     PoseidonCipherInstructions,
 };
 use hash::hasher::HasherChip;
@@ -247,8 +249,8 @@ fn test_modpow_2048_circuit() {
         // Given number of round parameters constructs new Posedion instance calculating unoptimized round constants with reference Grain then calculates optimized constants and sparse matrices
         let spec = Spec::<F, T, RATE>::new(8, 57);
         let inputs = (0..(3 * T)).map(|_| F::random(OsRng)).collect::<Vec<F>>();
-        ref_hasher.update(&inputs[..]);
-        let expected = ref_hasher.squeeze();
+        ref_hasher.perm_with_added_input(&inputs[..]);
+        let expected = ref_hasher.perm_remain();
         //println!("inputs: {:?}",inputs);
         //println!("expected: {:?}", expected);
 
@@ -371,8 +373,6 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 let ctx = &mut RegionCtx::new(region, offset);
 
                 let mut cipher = PoseidonCipherTest::<F, T, RATE> {
-                    r_f: 8,
-                    r_p: 57,
                     cipherKey: self.key.clone(),
                     cipherByteSize: CIPHER_SIZE_TEST * (F::NUM_BITS as usize) / (8 as usize),
                     cipher: [F::ZERO; CIPHER_SIZE_TEST],
@@ -525,15 +525,15 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
 
 #[test]
 fn test_poseidon_encryption() {
-    use crate::encryption::poseidon::*;
+    use crate::encryption::poseidon_enc::*;
 
     fn run<F: FromUniformBytes<64> + Ord, const T: usize, const RATE: usize>() {
         let mut ref_hasher = Poseidon::<F, T, RATE>::new(8, 57);
 
         let spec = Spec::<F, T, RATE>::new(8, 57);
         let inputs = (0..(3 * T)).map(|_| F::random(OsRng)).collect::<Vec<F>>();
-        ref_hasher.update(&inputs[..]);
-        let expected = ref_hasher.squeeze();
+        ref_hasher.perm_with_added_input(&inputs[..]);
+        let expected = ref_hasher.perm_remain();
 
         //======== Poseidon Encryption ============//
         let key = PoseidonCipherKey::<F> {
@@ -542,8 +542,6 @@ fn test_poseidon_encryption() {
         };
 
         let mut cipher = PoseidonCipherTest::<F, T, RATE> {
-            r_f: 8,
-            r_p: 57,
             cipherKey: key.clone(),
             cipherByteSize: CIPHER_SIZE_TEST * (F::NUM_BITS as usize) / 8,
             cipher: [F::ZERO; CIPHER_SIZE_TEST],
