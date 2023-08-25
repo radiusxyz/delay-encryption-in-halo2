@@ -4,7 +4,7 @@ use halo2wrong::halo2::{arithmetic::Field, plonk::Error};
 use maingate::{AssignedValue, RegionCtx};
 use num_bigint::BigUint;
 
-use super::poseidon::{PoseidonCipherKey, CIPHER_SIZE};
+use super::poseidon_enc::{PoseidonCipherKey, CIPHER_SIZE};
 
 // Instructions for Poseidon Cipher operations
 pub trait PoseidonCipherInstructions<F: PrimeField> {

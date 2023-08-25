@@ -12,6 +12,3 @@ mod spec;
 
 pub use crate::poseidon::poseidon::Poseidon;
 pub use crate::poseidon::spec::{MDSMatrices, MDSMatrix, SparseMDSMatrix, Spec, State};
-
-
-

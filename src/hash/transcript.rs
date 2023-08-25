@@ -175,7 +175,7 @@ mod tests {
     use halo2wrong::halo2::plonk::{Circuit, ConstraintSystem};
 
     use crate::transcript::LimbRepresentation;
-    use crate::{TranscriptChip, poseidon};
+    use crate::{poseidon, TranscriptChip};
     use ecc::halo2::arithmetic::CurveAffine;
     use ecc::halo2::circuit::Value;
     use ecc::integer::rns::Rns;
@@ -293,7 +293,9 @@ mod tests {
                     }
                     let challenge = transcript_chip.squeeze(ctx)?;
                     let expected = main_gate.assign_value(ctx, self.expected)?;
+                    // main_gate.assert_equal(ctx, &challenge, &expected)?;
                     main_gate.assert_equal(ctx, &challenge, &expected)?;
+                    // main_gate.assert_zero(ctx, &challenge)?;
 
                     Ok(())
                 },
@@ -318,7 +320,7 @@ mod tests {
                 .map(|_| Fr::random(OsRng))
                 .collect::<Vec<Fr>>();
 
-            ref_hasher.update(&inputs[..]);
+            ref_hasher.perm_with_added_input(&inputs[..]);
             let expected = ref_hasher.squeeze();
 
             let circuit: TestCircuit<G1Affine, 3, 2> = TestCircuit {
@@ -348,7 +350,7 @@ mod tests {
                             .map(|_| Fr::random(OsRng))
                             .collect::<Vec<Fr>>();
 
-                        ref_hasher.update(&inputs[..]);
+                        ref_hasher.perm_with_added_input(&inputs[..]);
                         let expected = ref_hasher.squeeze();
 
                         let circuit: TestCircuit<G1Affine, $T, $RATE> = TestCircuit {

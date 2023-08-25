@@ -3,35 +3,32 @@ use std::marker::PhantomData;
 use ff::{FromUniformBytes, PrimeField};
 
 use halo2wrong::{
-
     halo2::{
-        circuit::{Value, Layouter, SimpleFloorPlanner},
+        circuit::{Layouter, SimpleFloorPlanner, Value},
         plonk::{Circuit, ConstraintSystem, Error},
     },
     RegionCtx,
 };
 
 use maingate::{
-    mock_prover_verify, 
-    MainGate, MainGateConfig, MainGateInstructions,
-    AssignedValue, Term,
+    mock_prover_verify, AssignedValue, MainGate, MainGateConfig, MainGateInstructions, Term,
 };
 use num_bigint::{BigUint, RandomBits};
-use poseidon::{SparseMDSMatrix, Spec, State, Poseidon};
+use poseidon::{Poseidon, SparseMDSMatrix, Spec, State};
 use rand_core::OsRng;
 
 use crate::{
-    encryption::poseidon::{PoseidonCipher, MESSAGE_CAPACITY, PoseidonCipherTest},
-    NUMBER_OF_LIMBS, BIT_LEN_LIMB, poseidon,
+    encryption::poseidon_enc::{
+        PoseidonCipher, PoseidonCipherTest, FULL_ROUND, MESSAGE_CAPACITY, PARTIAL_ROUND,
+    },
+    poseidon,
 };
 
-use super::{
-    poseidon::{PoseidonCipherKey, CIPHER_SIZE},
-};
+use super::poseidon_enc::{PoseidonCipherKey, CIPHER_SIZE};
 
 #[derive(Debug, Clone)]
-//pub struct AssignedState<F: PrimeField, const T: usize>(pub(super) [AssignedValue<F>; T]);
 pub struct AssignedState<F: PrimeField, const T: usize>(pub [AssignedValue<F>; 5]);
+//pub struct AssignedState<F: PrimeField, const T: usize>(pub(super) [AssignedValue<F>; T]);
 
 #[derive(Clone, Debug)]
 pub struct PoseidonCipherConfig {
@@ -39,29 +36,26 @@ pub struct PoseidonCipherConfig {
     pub main_gate_config: MainGateConfig,
 }
 
-const DEFAULT_E: u128 = 65537;
-// const LIMB_WIDTH_RSA: usize = RSAChip::<F>::LIMB_WIDTH; // 64
-const R_F: usize = 8;
-const R_P: usize = 57;
-
 pub const MESSAGE_CAPACITY_TEST: usize = 2;
 pub const CIPHER_SIZE_TEST: usize = MESSAGE_CAPACITY_TEST + 1;
 
-pub struct PoseidonEncParams<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> {
-    pub r_f : usize,
-    pub r_p : usize,
+pub struct PoseidonEncParams<
+    F: PrimeField + FromUniformBytes<64>,
+    const T: usize,
+    const RATE: usize,
+> {
+    pub R_F: usize,
+    pub R_P: usize,
     pub cipherKey: PoseidonCipherKey<F>,
     pub cipherByteSize: usize,
-
-    // 
     pub cipher: [F; CIPHER_SIZE_TEST],
 }
 
 #[derive(Debug, Clone)]
 pub struct PoseidonCipherChip<
     F: PrimeField + FromUniformBytes<64>,
-    const NUMBER_OF_LIMBS: usize, 
-    const BITS_LEN: usize,        
+    const R_F: usize,
+    const R_P: usize,
     const T: usize,
     const RATE: usize,
 > {
@@ -73,18 +67,11 @@ pub struct PoseidonCipherChip<
 
 impl<
         F: PrimeField + FromUniformBytes<64>,
-        const NUMBER_OF_LIMBS: usize,
-        const BITS_LEN: usize,
+        const R_F: usize,
+        const R_P: usize,
         const T: usize,
         const RATE: usize,
-    >
-    PoseidonCipherChip<
-        F,
-        NUMBER_OF_LIMBS,
-        BITS_LEN,
-        T,
-        RATE,
-    >
+    > PoseidonCipherChip<F, R_F, R_P, T, RATE>
 {
     // Construct main gate
     pub fn main_gate(&self) -> MainGate<F> {
@@ -97,7 +84,6 @@ impl<
         spec: &Spec<F, T, RATE>,
         main_gate_config: &MainGateConfig,
     ) -> Result<Self, Error> {
-        
         let main_gate = MainGate::<_>::new(main_gate_config.clone());
         // wooju - TODO: set as init states rather than default
         let initial_state = State::<_, T>::default()
@@ -106,7 +92,7 @@ impl<
             .map(|word| main_gate.assign_constant(ctx, *word))
             .collect::<Result<Vec<AssignedValue<F>>, Error>>()?;
 
-       Ok(Self {
+        Ok(Self {
             state: AssignedState(initial_state.try_into().unwrap()),
             spec: spec.clone(),
             absorbing: vec![],
@@ -114,9 +100,8 @@ impl<
         })
     }
 
-    /// Appends field elements to the absorbation line. It won't perform
-    /// permutation here
-    pub fn update(&mut self, elements: &[AssignedValue<F>]) {
+    /// add inputs to encrypt
+    pub fn set_inputs(&mut self, elements: &[AssignedValue<F>]) {
         self.absorbing.extend_from_slice(elements);
     }
     /*
@@ -154,17 +139,11 @@ impl<
 
 impl<
         F: PrimeField + FromUniformBytes<64>,
-        const NUMBER_OF_LIMBS: usize,
-        const BITS_LEN: usize,
+        const R_F: usize,
+        const R_P: usize,
         const T: usize,
         const RATE: usize,
-    > PoseidonCipherChip<
-        F,
-        NUMBER_OF_LIMBS,
-        BITS_LEN,
-        T,
-        RATE,
-    >
+    > PoseidonCipherChip<F, R_F, R_P, T, RATE>
 {
     /// Applies full state sbox then adds constants to each word in the state
     fn sbox_full(&mut self, ctx: &mut RegionCtx<'_, F>, constants: &[F; T]) -> Result<(), Error> {
@@ -197,6 +176,11 @@ impl<
         // * inputs size equals to RATE: absorbing
         // * inputs size is less then RATE but not 0: padding
         // * inputs size is 0: extra permutation to avoid collution
+        // state = [s1, s2, s3, s4, s5]
+        // pre_constants = [c1, c2, c3, c4, c5]
+        // inputs = [i1, i2]
+        // offset = inputs.len() + 1 = 2 + 1 = 3
+        // state = [s1 + c1, s2 + i1 + c2, s3 + i2 + c3, s4 + c4, s5 + c5 + 1]
         inputs: Vec<AssignedValue<F>>,
         pre_constants: &[F; T],
     ) -> Result<(), Error> {
@@ -205,11 +189,9 @@ impl<
         let main_gate = self.main_gate();
 
         // Add the first constant to the first word
-        self.state.0[0] = main_gate
-            .add_constant(ctx, &self.state.0[0], pre_constants[0])?;
+        self.state.0[0] = main_gate.add_constant(ctx, &self.state.0[0], pre_constants[0])?;
 
         // Add inputs along with constants
-        // 입력 벡처 길이랑 상관없이 작동?
         for ((word, constant), input) in self
             .state
             .0
@@ -222,7 +204,6 @@ impl<
         }
 
         // Padding
-        // pading with zero = do nothing?
         for (i, (word, constant)) in self
             .state
             .0
@@ -237,6 +218,7 @@ impl<
                 if i == 0 {
                     // Mark
                     *constant + F::ONE
+                    // *constant + F::ZERO
                 } else {
                     *constant
                 },
@@ -356,7 +338,7 @@ impl<
         self.absorbing.clear();
 
         let mut padding_offset = 0;
-        // Apply permutation to `RATE`Ï sized chunks
+        // Apply permutation to `RATE` sized chunks
         for chunk in input_elements.chunks(RATE) {
             padding_offset = RATE - chunk.len();
             self.permutation(ctx, chunk.to_vec())?;
@@ -371,48 +353,19 @@ impl<
     }
 }
 
-
-
-//============//
-
-// Poseidon Constants
-// const NUMBER_OF_LIMBS: usize = 4;
-// const BIT_LEN_LIMB: usize = 68;
-// const BITS_LEN_RSA: usize = 2048;
-// const LIMB_WIDTH_RSA: usize = 64;
-// const EXP_LIMB_BITS: usize = 5;
-
 struct PoseidonCipherCircuit<
     F: PrimeField + FromUniformBytes<64>,
     const T: usize,
     const RATE: usize,
 > {
-    // // RSA time lock puzzle : secret = x^e mod n
-    // n: BigUint,
-    // e: BigUint,
-    // x: BigUint, // base integer
-
     // Poseidon
-    spec: Spec<F, T, RATE>, // Spec for Poseidon Hash
+    spec: Spec<F, T, RATE>, // Spec for Poseidon Encryption
     num_input: usize,       // zeroknight - ??
     message: Value<Vec<F>>, // message to be encrypted
     key: PoseidonCipherKey<F>,
-    expected: Value<F>,
-    encrypted: Value<Vec<F>>, // cipher text from the message
+    expected: Value<F>,       // expected cipher text
+    encrypted: Value<Vec<F>>, // cipher text from the circuit
 }
-
-// impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize>
-//     PoseidonCipherCircuit<F, T, RATE>
-// {
-//     const BITS_LEN_RSA: usize = 2048;
-//     const LIMB_WIDTH_RSA: usize = RSAChip::<F>::LIMB_WIDTH; // 64
-//     const EXP_LIMB_BITS_RSA: usize = 5;
-//     const DEFAULT_E: u128 = 65537;
-
-    // fn rsa_chip(&self, config: RSAConfig) -> RSAChip<F> {
-    //     RSAChip::new(config, Self::BITS_LEN_RSA, Self::EXP_LIMB_BITS_RSA)
-    // }
-// }
 
 impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Circuit<F>
     for PoseidonCipherCircuit<F, T, RATE>
@@ -425,11 +378,8 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
     }
 
     fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
-      
         let main_gate_config = MainGate::<F>::configure(meta);
-        PoseidonCipherConfig {
-            main_gate_config
-        }
+        PoseidonCipherConfig { main_gate_config }
     }
 
     fn synthesize(
@@ -437,18 +387,15 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
         config: Self::Config,
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
-        let mut main_gate = MainGate::<F>::new(config.main_gate_config.clone());
+        let main_gate = MainGate::<F>::new(config.main_gate_config.clone());
 
         layouter.assign_region(
             || "poseidon cipher",
             |region| {
-
                 let offset = 0;
                 let ctx = &mut RegionCtx::new(region, offset);
 
                 let mut cipher = PoseidonCipherTest::<F, T, RATE> {
-                    r_f: 8,
-                    r_p: 57,
                     cipherKey: self.key.clone(),
                     cipherByteSize: CIPHER_SIZE_TEST * (F::NUM_BITS as usize) / (8 as usize),
                     cipher: [F::ZERO; CIPHER_SIZE_TEST],
@@ -468,35 +415,31 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 let initial_state = cipher.initial_state(F::ONE);
 
                 // assign initial_state into cells.
-                let mut pos_enc_chip = PoseidonCipherChip::<F, NUMBER_OF_LIMBS, BIT_LEN_LIMB, T, RATE>::new(ctx, &self.spec, &config.main_gate_config)?;
-                //let mut input_intial = vec![];
-                
-                println!("zk_hasher state: {:?}", pos_enc_chip.state.0);
+                let mut pos_enc_chip =
+                    PoseidonCipherChip::<F, FULL_ROUND, PARTIAL_ROUND, T, RATE>::new(
+                        ctx,
+                        &self.spec,
+                        &config.main_gate_config,
+                    )?;
+
+                println!("\nzk_hasher state: {:?}", pos_enc_chip.state.0);
 
                 // transpose_vec
                 let temp = Value::known(initial_state.to_vec().clone());
                 for e in temp.transpose_vec(5) {
                     let e = main_gate.assign_value(ctx, e.map(|v| v))?;
-                    pos_enc_chip.update(&[e.clone()]);
+                    pos_enc_chip.set_inputs(&[e.clone()]);
                 }
-                /*
-                for e in initial_state {
-                    let e = main_gate.assign_value(ctx, Value::known(e))?;
-                    pos_enc_chip.update(&[e.clone()]);
-                    //input_intial.push(e);
-                }
-                */
+
                 // !!!!!! = zeroknight - permutation doesn't work..
-                // !!!!!! 
-                // pos_enc_chip.permutation(ctx, input_intial.clone())?;
+                // !!!!!!
                 pos_enc_chip.hash(ctx)?;
                 let states = pos_enc_chip.state.0.to_vec();
-                println!("zk_hasher state2: {:?}", states);
+                println!("zk_hasher state2: {:?}\n", states);
 
                 // assign message (inputs) into cells
                 let mut message_state = vec![];
-                for e in self.message.as_ref()
-                                    .transpose_vec(self.num_input) {
+                for e in self.message.as_ref().transpose_vec(self.num_input) {
                     let e = main_gate.assign_value(ctx, e.map(|v| *v))?;
                     message_state.push(e);
                 }
@@ -504,60 +447,67 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 let mut cipher_text = vec![];
                 let mut next_states = pos_enc_chip.state.0.to_vec().clone();
                 (0..MESSAGE_CAPACITY_TEST).for_each(|i| {
-                    //let mut current_states = pos_enc_chip.absorbing.clone();
-                    // println!("length : {}", current_states.len());
                     if i < message_state.len() {
-                        next_states[i+1] = main_gate.add(ctx, &next_states[i+1], &message_state[i]).unwrap();
+                        next_states[i + 1] = main_gate
+                            .add(ctx, &next_states[i + 1], &message_state[i])
+                            .unwrap();
                     } else {
                         let zero = main_gate.assign_constant(ctx, F::ZERO).unwrap();
-                        next_states[i+1] = main_gate.add(ctx, &next_states[i+1], &zero).unwrap();
+                        next_states[i + 1] =
+                            main_gate.add(ctx, &next_states[i + 1], &zero).unwrap();
                     }
 
                     // [WIP] cipher[i] = state[i + 1];
-                    next_states[i+1].value().map(|e| {
+                    next_states[i + 1].value().map(|e| {
                         cipher_text.push(main_gate.assign_value(ctx, Value::known(*e)).unwrap());
                     });
                 });
 
-                // [Native] hasher.update(&state);
-                let mut pos_enc_chip_2 = PoseidonCipherChip::<F, NUMBER_OF_LIMBS, BIT_LEN_LIMB, T, RATE>::new(ctx, &self.spec, &config.main_gate_config)?;
-                pos_enc_chip_2.update(&next_states[..]);
+                // [Native] hasher.set_inputs(&state);
+                let mut pos_enc_chip_2 =
+                    PoseidonCipherChip::<F, FULL_ROUND, PARTIAL_ROUND, T, RATE>::new(
+                        ctx,
+                        &self.spec,
+                        &config.main_gate_config,
+                    )?;
+                pos_enc_chip_2.set_inputs(&next_states[..]);
 
                 // [Native] cipher[MESSAGE_CAPACITY_TEST] = state[1];
                 let mut next_states_2 = pos_enc_chip.state.0.to_vec().clone();
                 let tmp = next_states_2[1].value().map(|e| {
-                    cipher_text.push(main_gate.assign_value(ctx, Value::known(*e)).unwrap());                    
+                    cipher_text.push(main_gate.assign_value(ctx, Value::known(*e)).unwrap());
                 });
 
                 println!("cipher: {:?}", cipher_text);
-                println!("native cipher: {:?}", native_cipher );
+                println!("native cipher: {:?}\n", native_cipher);
+                println!("cipher len: {:?}", cipher_text.len());
                 // [WIP]
                 // should be equal : cipher.cipher vs cipher_text
-                if cipher_text.len() > 0 {
+                // if cipher_text.len() > 0 {
                     println!("check out equality..");
-                    let _ = main_gate.assert_equal(ctx, &cipher_text[0], &native_cipher[0]);
+                    // main_gate.assert_zero(ctx, &cipher_text[0])?;
+                    let _ = main_gate.assert_equal(ctx, &cipher_text[0], &native_cipher[0])?;
+                    // let _ = main_gate.assert_equal(ctx, &cipher_text[0], &native_cipher[0]);
                     let _ = main_gate.assert_equal(ctx, &cipher_text[1], &native_cipher[1]);
                     let _ = main_gate.assert_equal(ctx, &cipher_text[2], &native_cipher[2]);
-                }
-
+                // }
                 Ok(())
-
-        })?;
+            },
+        )?;
         Ok(())
     }
 }
 
 #[test]
 fn test_pos_enc() {
+    use crate::encryption::poseidon_enc::*;
 
-    use crate::encryption::poseidon::*;
-    
     fn run<F: FromUniformBytes<64> + Ord, const T: usize, const RATE: usize>() {
-        let mut ref_hasher = Poseidon::<F, T, RATE>::new(8, 57);
+        let mut ref_hasher = Poseidon::<F, T, RATE>::new(FULL_ROUND, PARTIAL_ROUND);
 
-        let spec = Spec::<F, T, RATE>::new(8,57);
-        let inputs = (0..(3*T)).map(|_| F::random(OsRng)).collect::<Vec<F>>();
-        ref_hasher.update(&inputs[..]);
+        let spec = Spec::<F, T, RATE>::new(8, 57);
+        let inputs = (0..(3 * T)).map(|_| F::random(OsRng)).collect::<Vec<F>>();
+        ref_hasher.perm_with_added_input(&inputs[..]);
         let expected = ref_hasher.squeeze();
 
         //======== Poseidon Encryption ============//
@@ -567,13 +517,11 @@ fn test_pos_enc() {
         };
 
         let mut cipher = PoseidonCipherTest::<F, T, RATE> {
-            r_f: 8,
-            r_p: 57,
             cipherKey: key.clone(),
             cipherByteSize: CIPHER_SIZE_TEST * (F::NUM_BITS as usize) / 8,
             cipher: [F::ZERO; CIPHER_SIZE_TEST],
         };
-        
+
         let message = [F::random(OsRng), F::random(OsRng)];
         cipher.encrypt(&message, &F::ONE);
         println!("Messages.: {:?}", message);
@@ -582,13 +530,13 @@ fn test_pos_enc() {
 
         //========== Circuit =============//
         let key = PoseidonCipherKey::<F> {
-            key0 : F::random(OsRng),
-            key1 : F::random(OsRng),
+            key0: F::random(OsRng),
+            key1: F::random(OsRng),
         };
 
         let circuit = PoseidonCipherCircuit::<F, T, RATE> {
             spec: spec.clone(),
-            num_input: 3*T,
+            num_input: 3 * T,
             message: Value::known(inputs),
             key: key.clone(),
             expected: Value::known(expected),
@@ -600,5 +548,5 @@ fn test_pos_enc() {
     }
     use halo2wrong::curves::bn256::Fr as BnFr;
 
-    run::<BnFr, 5,4>();
+    run::<BnFr, 5, 4>();
 }

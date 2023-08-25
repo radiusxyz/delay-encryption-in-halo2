@@ -1,6 +1,6 @@
-use maingate::{AssignedValue, MainGate, MainGateConfig, MainGateInstructions, RegionCtx, Term};
 use halo2::halo2curves::ff::PrimeField;
 use halo2wrong::halo2::plonk::Error;
+use maingate::{AssignedValue, MainGate, MainGateConfig, MainGateInstructions, RegionCtx, Term};
 use poseidon::{SparseMDSMatrix, Spec, State};
 
 use crate::poseidon;
