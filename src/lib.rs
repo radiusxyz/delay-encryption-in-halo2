@@ -427,14 +427,19 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 });
 
                 // [Native] hasher.update(&state);
-                let mut hasher_chip_2 = HasherChip::<F, NUMBER_OF_LIMBS, BIT_LEN_LIMB, T, RATE>::new(ctx, &self.spec, &config.main_gate_config)?;
-                hasher_chip_2.update(&next_states[..]);
+                //let mut hasher_chip_2 = HasherChip::<F, NUMBER_OF_LIMBS, BIT_LEN_LIMB, T, RATE>::new(ctx, &self.spec, &config.main_gate_config)?;
+                hasher_chip.update(&next_states[..]);
+                hasher_chip.hash(ctx);
 
                 // [Native] cipher[MESSAGE_CAPACITY_TEST] = state[1];
                 let mut next_states_2 = hasher_chip.state.0.to_vec().clone();
+
+                cipher_text.push(next_states_2[1].clone());
+                /*
                 let tmp = next_states_2[1].value().map(|e| {
                     cipher_text.push(main_gate.assign_value(ctx, Value::known(*e)).unwrap());                    
                 });
+                */
 
                 println!("cipher: {:?}", cipher_text);
                 println!("native cipher: {:?}", native_cipher );
@@ -444,7 +449,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 println!("check out equality..");
                 main_gate.assert_equal(ctx, &cipher_text[0], &native_cipher[0]);
                 main_gate.assert_equal(ctx, &cipher_text[1], &native_cipher[1]);
-                //main_gate.assert_equal(ctx, &cipher_text[2], &native_cipher[2]);      // Should be Equal!!
+                main_gate.assert_equal(ctx, &cipher_text[2], &native_cipher[2]);      // Should be Equal!!
                 //}
 
                 Ok(())
