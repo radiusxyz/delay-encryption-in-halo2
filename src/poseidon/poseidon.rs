@@ -23,7 +23,7 @@ impl<F: FromUniformBytes<64>, const T: usize, const RATE: usize> Poseidon<F, T, 
 
     /// Appends elements to the absorption line updates state while `RATE` is
     /// full
-    pub fn perm_with_added_input(&mut self, elements: &[F]) {
+    pub fn perm_with_input(&mut self, elements: &[F]) {
         let mut input_elements = self.absorbing.clone();
         input_elements.extend_from_slice(elements);
 
@@ -90,7 +90,7 @@ mod tests {
         let number_of_inputs = RATE * number_of_permutation - 1;
         let inputs = gen_random_vec(number_of_inputs);
 
-        poseidon.perm_with_added_input(&inputs[..]);
+        poseidon.perm_with_input(&inputs[..]);
         let result_0 = poseidon.perm_remain();
 
         let spec = poseidon.spec.clone();
@@ -117,7 +117,7 @@ mod tests {
         let inputs = (0..number_of_inputs)
             .map(|_| Fr::random(OsRng))
             .collect::<Vec<Fr>>();
-        poseidon.perm_with_added_input(&inputs[..]);
+        poseidon.perm_with_input(&inputs[..]);
         let result_0 = poseidon.perm_remain();
 
         let spec = poseidon.spec.clone();
@@ -152,7 +152,7 @@ mod tests {
                             let chunk = (0..number_of_inputs)
                                 .map(|_| Fr::random(OsRng))
                                 .collect::<Vec<Fr>>();
-                            poseidon.perm_with_added_input(&chunk[..]);
+                            poseidon.perm_with_input(&chunk[..]);
                             inputs.extend(chunk);
                         }
                         let result_0 = poseidon.perm_remain();

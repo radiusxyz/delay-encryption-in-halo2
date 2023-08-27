@@ -249,7 +249,7 @@ fn test_modpow_2048_circuit() {
         // Given number of round parameters constructs new Posedion instance calculating unoptimized round constants with reference Grain then calculates optimized constants and sparse matrices
         let spec = Spec::<F, T, RATE>::new(8, 57);
         let inputs = (0..(3 * T)).map(|_| F::random(OsRng)).collect::<Vec<F>>();
-        ref_hasher.perm_with_added_input(&inputs[..]);
+        ref_hasher.perm_with_input(&inputs[..]);
         let expected = ref_hasher.perm_remain();
         //println!("inputs: {:?}",inputs);
         //println!("expected: {:?}", expected);
@@ -476,8 +476,8 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 println!("check out equality..");
                 main_gate.assert_equal(ctx, &cipher_text[0], &native_cipher[0]);
                 main_gate.assert_equal(ctx, &cipher_text[1], &native_cipher[1]);
-                main_gate.assert_equal(ctx, &cipher_text[2], &native_cipher[2]);      // Should be Equal!!
-                //}
+                main_gate.assert_equal(ctx, &cipher_text[2], &native_cipher[2]); // Should be Equal!!
+                                                                                 //}
 
                 Ok(())
             },
@@ -532,7 +532,7 @@ fn test_poseidon_encryption() {
 
         let spec = Spec::<F, T, RATE>::new(8, 57);
         let inputs = (0..(3 * T)).map(|_| F::random(OsRng)).collect::<Vec<F>>();
-        ref_hasher.perm_with_added_input(&inputs[..]);
+        ref_hasher.perm_with_input(&inputs[..]);
         let expected = ref_hasher.perm_remain();
 
         //======== Poseidon Encryption ============//

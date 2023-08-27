@@ -191,6 +191,8 @@ impl<
         // Add the first constant to the first word
         self.state.0[0] = main_gate.add_constant(ctx, &self.state.0[0], pre_constants[0])?;
 
+        // println!("Before adding:{:?}", self.state.0[0]);
+
         // Add inputs along with constants
         for ((word, constant), input) in self
             .state
@@ -202,6 +204,8 @@ impl<
         {
             *word = main_gate.add_with_constant(ctx, word, input, *constant)?;
         }
+
+        // println!("After adding:{:?}", self.state.0[0]);
 
         // Remaining part
         for (i, (word, constant)) in self
@@ -342,25 +346,39 @@ impl<
         Ok(self.state.0[1].clone())
     }
 
-    pub fn pose_encrypt(&mut self, ctx: &mut RegionCtx<'_, F>) -> Result<AssignedValue<F>, Error> {
+    pub fn pose_encrypt(
+        &mut self,
+        ctx: &mut RegionCtx<'_, F>,
+    ) -> Result<Vec<AssignedValue<F>>, Error> {
+        let mut cipher_text = vec![];
         // Get elements to be encrypted
         let input_elements = self.absorbing.clone();
+        let main_gate = self.main_gate();
+
+        println!("input_elements len: {:?}", input_elements.len());
+
         // Flush the input que
         self.absorbing.clear();
-
-        let mut padding_offset = 0;
         // Apply permutation to `RATE` sized chunks
-        for chunk in input_elements.chunks(RATE) {
-            padding_offset = RATE - chunk.len();
-            self.permutation(ctx, chunk.to_vec())?;
+        for inputs in input_elements.chunks(RATE) {
+            // let pre_constants = &[F::ZERO;T];
+
+            let mut i = 0;
+
+            // Add inputs along with constants
+            for (word, input) in self.state.0.iter_mut().skip(1).zip(inputs.iter()) {
+                *word = main_gate.add(ctx, word, input)?;
+                if i < MESSAGE_CAPACITY_TEST {
+                    cipher_text.push(word.clone());
+                    i += 1;
+                }
+            }
+
+            self.permutation(ctx, inputs.to_vec())?;
+            cipher_text.push(self.state.0[1].clone());
         }
 
-        // If last chunking is full apply another permutation for collution resistance
-        if padding_offset == 0 {
-            self.permutation(ctx, vec![])?;
-        }
-
-        Ok(self.state.0[1].clone())
+        Ok(cipher_text)
     }
 }
 
@@ -448,65 +466,24 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 let states = pos_enc_chip.state.0.to_vec();
                 println!("zk_hasher state2: {:?}\n", states);
 
+                // pos_enc_chip.absorbing.clear();
+
                 // assign message (inputs) into cells
                 // let mut message_state = vec![];
+
+                println!(
+                    "message len: {:?}",
+                    self.message.as_ref().transpose_vec(self.num_input).len()
+                );
                 for e in self.message.as_ref().transpose_vec(self.num_input) {
                     let e = main_gate.assign_value(ctx, e.map(|v| *v))?;
                     // message_state.push(e);
                     pos_enc_chip.set_inputs(&[e.clone()]);
                 }
 
-                let mut cipher_text = vec![];
-                // let mut next_states = pos_enc_chip.state.0.to_vec().clone();
-                // (0..MESSAGE_CAPACITY_TEST).for_each(|i| {
-                //     if i < message_state.len() {
-                //         next_states[i + 1] = main_gate
-                //             .add(ctx, &next_states[i + 1], &message_state[i])
-                //             .unwrap();
-                //     } else {
-                //         let zero = main_gate.assign_constant(ctx, F::ZERO).unwrap();
-                //         next_states[i + 1] =
-                //             main_gate.add(ctx, &next_states[i + 1], &zero).unwrap();
-                //     }
-                //     next_states[i + 1].value().map(|e| {
-                //         cipher_text.push(main_gate.assign_value(ctx, Value::known(*e)).unwrap());
-                //     });
-                // });
-                // cipher_text.push(next_states[i + 1].clone());
-                // });
-
                 //=============================//
-                // Get elements to be encrypted
-                let input_elements = pos_enc_chip.absorbing.clone();
-                // Flush the input que
-                pos_enc_chip.absorbing.clear();
-                // Apply permutation to `RATE` sized chunks
-                for inputs in input_elements.chunks(RATE) {
-                    // let pre_constants = &[F::ZERO;T];
 
-                    // Add inputs along with constants
-                    for (word, input) in pos_enc_chip.state.0.iter_mut().skip(1).zip(inputs.iter())
-                    {
-                        *word = main_gate.add(ctx, word, input)?;
-                        cipher_text.push(word.clone());
-                    }
-                }
-                //=========================//
-
-                // // [Native] hasher.set_inputs(&state);
-                // let mut pos_enc_chip_2 =
-                //     PoseidonCipherChip::<F, FULL_ROUND, PARTIAL_ROUND, T, RATE>::new(
-                //         ctx,
-                //         &self.spec,
-                //         &config.main_gate_config,
-                //     )?;
-                // pos_enc_chip_2.set_inputs(&next_states[..]);
-
-                // [Native] cipher[MESSAGE_CAPACITY_TEST] = state[1];
-                let mut next_states_2 = pos_enc_chip.state.0.to_vec().clone();
-                let tmp = next_states_2[1].value().map(|e| {
-                    cipher_text.push(main_gate.assign_value(ctx, Value::known(*e)).unwrap());
-                });
+                let cipher_text = pos_enc_chip.pose_encrypt(ctx)?;
 
                 println!("cipher: {:?}", cipher_text);
                 println!("native cipher: {:?}\n", native_cipher);
@@ -514,12 +491,12 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 // [WIP]
                 // should be equal : cipher.cipher vs cipher_text
                 // if cipher_text.len() > 0 {
-                    println!("check out equality..");
-                    // main_gate.assert_zero(ctx, &cipher_text[0])?;
-                    let _ = main_gate.assert_equal(ctx, &cipher_text[0], &native_cipher[0])?;
-                    // let _ = main_gate.assert_equal(ctx, &cipher_text[0], &native_cipher[0]);
-                    let _ = main_gate.assert_equal(ctx, &cipher_text[1], &native_cipher[1]);
-                    let _ = main_gate.assert_equal(ctx, &cipher_text[2], &native_cipher[2]);
+                println!("check out equality..");
+                // main_gate.assert_zero(ctx, &cipher_text[0])?;
+                let _ = main_gate.assert_equal(ctx, &cipher_text[0], &native_cipher[0])?;
+                // let _ = main_gate.assert_equal(ctx, &cipher_text[0], &native_cipher[0]);
+                let _ = main_gate.assert_equal(ctx, &cipher_text[1], &native_cipher[1]);
+                // let _ = main_gate.assert_equal(ctx, &cipher_text[2], &native_cipher[2]);
                 // }
                 Ok(())
             },
@@ -536,8 +513,11 @@ fn test_pos_enc() {
         let mut ref_hasher = Poseidon::<F, T, RATE>::new(FULL_ROUND, PARTIAL_ROUND);
 
         let spec = Spec::<F, T, RATE>::new(8, 57);
-        let inputs = (0..(3 * T)).map(|_| F::random(OsRng)).collect::<Vec<F>>();
-        ref_hasher.perm_with_added_input(&inputs[..]);
+        let inputs = (0..(MESSAGE_CAPACITY_TEST))
+            // .map(|_| F::random(OsRng))
+            .map(|_| F::ZERO)
+            .collect::<Vec<F>>();
+        ref_hasher.perm_with_input(&inputs[..]);
         let expected = ref_hasher.perm_remain();
 
         //======== Poseidon Encryption ============//
@@ -552,7 +532,8 @@ fn test_pos_enc() {
             cipher: [F::ZERO; CIPHER_SIZE_TEST],
         };
 
-        let message = [F::random(OsRng), F::random(OsRng)];
+        // let message = [F::random(OsRng), F::random(OsRng)];
+        let message = [F::ZERO, F::ZERO];
         cipher.encrypt(&message, &F::ONE);
         println!("Messages.: {:?}", message);
         println!("Encrypted: {:?}", cipher.cipher);
@@ -566,7 +547,7 @@ fn test_pos_enc() {
 
         let circuit = PoseidonCipherCircuit::<F, T, RATE> {
             spec: spec.clone(),
-            num_input: 3 * T,
+            num_input: MESSAGE_CAPACITY_TEST,
             message: Value::known(inputs),
             key: key.clone(),
             expected: Value::known(expected),

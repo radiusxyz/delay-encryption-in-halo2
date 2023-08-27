@@ -320,7 +320,7 @@ mod tests {
                 .map(|_| Fr::random(OsRng))
                 .collect::<Vec<Fr>>();
 
-            ref_hasher.perm_with_added_input(&inputs[..]);
+            ref_hasher.perm_with_input(&inputs[..]);
             let expected = ref_hasher.perm_remain();
 
             let circuit: TestCircuit<G1Affine, 3, 2> = TestCircuit {
@@ -350,7 +350,7 @@ mod tests {
                             .map(|_| Fr::random(OsRng))
                             .collect::<Vec<Fr>>();
 
-                        ref_hasher.perm_with_added_input(&inputs[..]);
+                        ref_hasher.perm_with_input(&inputs[..]);
                         let expected = ref_hasher.perm_remain();
 
                         let circuit: TestCircuit<G1Affine, $T, $RATE> = TestCircuit {
