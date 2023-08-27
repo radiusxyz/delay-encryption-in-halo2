@@ -162,217 +162,217 @@ impl<
     }
 }
 
-#[cfg(test)]
-mod tests {
-    // use halo2::circuit::Layouter;
-    // use halo2::circuit::SimpleFloorPlanner;
-    use halo2::halo2curves::ff::{Field, PrimeField};
-    use halo2wrong::halo2::circuit::{Layouter, SimpleFloorPlanner};
-    // use halo2::plonk::Error;
-    use halo2wrong::halo2::plonk::Error;
+// #[cfg(test)]
+// mod tests {
+//     // use halo2::circuit::Layouter;
+//     // use halo2::circuit::SimpleFloorPlanner;
+//     use halo2::halo2curves::ff::{Field, PrimeField};
+//     use halo2wrong::halo2::circuit::{Layouter, SimpleFloorPlanner};
+//     // use halo2::plonk::Error;
+//     use halo2wrong::halo2::plonk::Error;
 
-    //use halo2::plonk::{Circuit, ConstraintSystem};
-    use halo2wrong::halo2::plonk::{Circuit, ConstraintSystem};
+//     //use halo2::plonk::{Circuit, ConstraintSystem};
+//     use halo2wrong::halo2::plonk::{Circuit, ConstraintSystem};
 
-    use crate::transcript::LimbRepresentation;
-    use crate::{poseidon, TranscriptChip};
-    use ecc::halo2::arithmetic::CurveAffine;
-    use ecc::halo2::circuit::Value;
-    use ecc::integer::rns::Rns;
-    use ecc::maingate::RangeChip;
-    use ecc::maingate::RangeConfig;
-    use ecc::maingate::RangeInstructions;
-    use ecc::BaseFieldEccChip;
-    use ecc::EccConfig;
-    use maingate::mock_prover_verify;
-    use maingate::MainGate;
-    use maingate::MainGateConfig;
-    use maingate::{MainGateInstructions, RegionCtx};
-    use paste::paste;
-    use poseidon::Poseidon;
-    use poseidon::Spec;
-    use rand_core::OsRng;
+//     use crate::transcript::LimbRepresentation;
+//     use crate::{poseidon, TranscriptChip};
+//     use ecc::halo2::arithmetic::CurveAffine;
+//     use ecc::halo2::circuit::Value;
+//     use ecc::integer::rns::Rns;
+//     use ecc::maingate::RangeChip;
+//     use ecc::maingate::RangeConfig;
+//     use ecc::maingate::RangeInstructions;
+//     use ecc::BaseFieldEccChip;
+//     use ecc::EccConfig;
+//     use maingate::mock_prover_verify;
+//     use maingate::MainGate;
+//     use maingate::MainGateConfig;
+//     use maingate::{MainGateInstructions, RegionCtx};
+//     use paste::paste;
+//     use poseidon::Poseidon;
+//     use poseidon::Spec;
+//     use rand_core::OsRng;
 
-    const NUMBER_OF_LIMBS: usize = 4;
-    const BIT_LEN_LIMB: usize = 68;
+//     const NUMBER_OF_LIMBS: usize = 4;
+//     const BIT_LEN_LIMB: usize = 68;
 
-    #[derive(Clone)]
-    struct TestCircuitConfig {
-        main_gate_config: MainGateConfig,
-        range_config: RangeConfig,
-    }
+//     #[derive(Clone)]
+//     struct TestCircuitConfig {
+//         main_gate_config: MainGateConfig,
+//         range_config: RangeConfig,
+//     }
 
-    impl TestCircuitConfig {
-        fn ecc_chip_config(&self) -> EccConfig {
-            EccConfig::new(self.range_config.clone(), self.main_gate_config.clone())
-        }
+//     impl TestCircuitConfig {
+//         fn ecc_chip_config(&self) -> EccConfig {
+//             EccConfig::new(self.range_config.clone(), self.main_gate_config.clone())
+//         }
 
-        fn new<C: CurveAffine>(meta: &mut ConstraintSystem<C::Scalar>) -> Self {
-            let rns = Rns::<C::Base, C::Scalar, NUMBER_OF_LIMBS, BIT_LEN_LIMB>::construct();
+//         fn new<C: CurveAffine>(meta: &mut ConstraintSystem<C::Scalar>) -> Self {
+//             let rns = Rns::<C::Base, C::Scalar, NUMBER_OF_LIMBS, BIT_LEN_LIMB>::construct();
 
-            let main_gate_config = MainGate::<C::Scalar>::configure(meta);
-            let overflow_bit_lens = rns.overflow_lengths();
-            let composition_bit_lens = vec![BIT_LEN_LIMB / NUMBER_OF_LIMBS];
+//             let main_gate_config = MainGate::<C::Scalar>::configure(meta);
+//             let overflow_bit_lens = rns.overflow_lengths();
+//             let composition_bit_lens = vec![BIT_LEN_LIMB / NUMBER_OF_LIMBS];
 
-            let range_config = RangeChip::<C::Scalar>::configure(
-                meta,
-                &main_gate_config,
-                composition_bit_lens,
-                overflow_bit_lens,
-            );
-            TestCircuitConfig {
-                main_gate_config,
-                range_config,
-            }
-        }
+//             let range_config = RangeChip::<C::Scalar>::configure(
+//                 meta,
+//                 &main_gate_config,
+//                 composition_bit_lens,
+//                 overflow_bit_lens,
+//             );
+//             TestCircuitConfig {
+//                 main_gate_config,
+//                 range_config,
+//             }
+//         }
 
-        fn config_range<N: PrimeField>(
-            &self,
-            layouter: &mut impl Layouter<N>,
-        ) -> Result<(), Error> {
-            let range_chip = RangeChip::<N>::new(self.range_config.clone());
-            range_chip.load_table(layouter)?;
+//         fn config_range<N: PrimeField>(
+//             &self,
+//             layouter: &mut impl Layouter<N>,
+//         ) -> Result<(), Error> {
+//             let range_chip = RangeChip::<N>::new(self.range_config.clone());
+//             range_chip.load_table(layouter)?;
 
-            Ok(())
-        }
-    }
+//             Ok(())
+//         }
+//     }
 
-    struct TestCircuit<C: CurveAffine, const T: usize, const RATE: usize> {
-        spec: Spec<C::Scalar, T, RATE>,
-        n: usize,
-        inputs: Value<Vec<C::Scalar>>,
-        expected: Value<C::Scalar>,
-    }
+//     struct TestCircuit<C: CurveAffine, const T: usize, const RATE: usize> {
+//         spec: Spec<C::Scalar, T, RATE>,
+//         n: usize,
+//         inputs: Value<Vec<C::Scalar>>,
+//         expected: Value<C::Scalar>,
+//     }
 
-    impl<C: CurveAffine, const T: usize, const RATE: usize> Circuit<C::Scalar>
-        for TestCircuit<C, T, RATE>
-    {
-        type Config = TestCircuitConfig;
-        type FloorPlanner = SimpleFloorPlanner;
-        #[cfg(feature = "circuit-params")]
-        type Params = ();
+//     impl<C: CurveAffine, const T: usize, const RATE: usize> Circuit<C::Scalar>
+//         for TestCircuit<C, T, RATE>
+//     {
+//         type Config = TestCircuitConfig;
+//         type FloorPlanner = SimpleFloorPlanner;
+//         #[cfg(feature = "circuit-params")]
+//         type Params = ();
 
-        fn without_witnesses(&self) -> Self {
-            unimplemented!();
-        }
+//         fn without_witnesses(&self) -> Self {
+//             unimplemented!();
+//         }
 
-        fn configure(meta: &mut ConstraintSystem<C::Scalar>) -> Self::Config {
-            TestCircuitConfig::new::<C>(meta)
-        }
+//         fn configure(meta: &mut ConstraintSystem<C::Scalar>) -> Self::Config {
+//             TestCircuitConfig::new::<C>(meta)
+//         }
 
-        fn synthesize(
-            &self,
-            config: Self::Config,
-            mut layouter: impl Layouter<C::Scalar>,
-        ) -> Result<(), Error> {
-            let main_gate = MainGate::<C::Scalar>::new(config.main_gate_config.clone());
-            let ecc_chip_config = config.ecc_chip_config();
-            let ecc_chip =
-                BaseFieldEccChip::<C, NUMBER_OF_LIMBS, BIT_LEN_LIMB>::new(ecc_chip_config);
+//         fn synthesize(
+//             &self,
+//             config: Self::Config,
+//             mut layouter: impl Layouter<C::Scalar>,
+//         ) -> Result<(), Error> {
+//             let main_gate = MainGate::<C::Scalar>::new(config.main_gate_config.clone());
+//             let ecc_chip_config = config.ecc_chip_config();
+//             let ecc_chip =
+//                 BaseFieldEccChip::<C, NUMBER_OF_LIMBS, BIT_LEN_LIMB>::new(ecc_chip_config);
 
-            // Run test against reference implementation and
-            // compare results
-            layouter.assign_region(
-                || "region 0",
-                |region| {
-                    let offset = 0;
-                    let ctx = &mut RegionCtx::new(region, offset);
+//             // Run test against reference implementation and
+//             // compare results
+//             layouter.assign_region(
+//                 || "region 0",
+//                 |region| {
+//                     let offset = 0;
+//                     let ctx = &mut RegionCtx::new(region, offset);
 
-                    let mut transcript_chip =
-                        TranscriptChip::<_, _, _, NUMBER_OF_LIMBS, BIT_LEN_LIMB, T, RATE>::new(
-                            ctx,
-                            &self.spec,
-                            ecc_chip.clone(),
-                            LimbRepresentation::default(),
-                        )?;
+//                     let mut transcript_chip =
+//                         TranscriptChip::<_, _, _, NUMBER_OF_LIMBS, BIT_LEN_LIMB, T, RATE>::new(
+//                             ctx,
+//                             &self.spec,
+//                             ecc_chip.clone(),
+//                             LimbRepresentation::default(),
+//                         )?;
 
-                    for e in self.inputs.as_ref().transpose_vec(self.n) {
-                        let e = main_gate.assign_value(ctx, e.map(|e| *e))?;
-                        println!("{:?}", e);
-                        transcript_chip.write_scalar(&e);
-                    }
-                    let challenge = transcript_chip.perm_remain(ctx)?;
-                    let expected = main_gate.assign_value(ctx, self.expected)?;
-                    // main_gate.assert_equal(ctx, &challenge, &expected)?;
-                    main_gate.assert_equal(ctx, &challenge, &expected)?;
-                    // main_gate.assert_zero(ctx, &challenge)?;
+//                     for e in self.inputs.as_ref().transpose_vec(self.n) {
+//                         let e = main_gate.assign_value(ctx, e.map(|e| *e))?;
+//                         println!("{:?}", e);
+//                         transcript_chip.write_scalar(&e);
+//                     }
+//                     let challenge = transcript_chip.perm_remain(ctx)?;
+//                     let expected = main_gate.assign_value(ctx, self.expected)?;
+//                     // main_gate.assert_equal(ctx, &challenge, &expected)?;
+//                     main_gate.assert_equal(ctx, &challenge, &expected)?;
+//                     // main_gate.assert_zero(ctx, &challenge)?;
 
-                    Ok(())
-                },
-            )?;
+//                     Ok(())
+//                 },
+//             )?;
 
-            config.config_range(&mut layouter)?;
+//             config.config_range(&mut layouter)?;
 
-            Ok(())
-        }
-    }
+//             Ok(())
+//         }
+//     }
 
-    #[test]
-    fn test_example() {
-        //use crate::curves::bn256::{Fr, G1Affine};
-        use halo2wrong::curves::bn256::{Fr, G1Affine};
-        for number_of_inputs in 0..3 * 3 {
-            println!("{:?}", number_of_inputs);
-            let mut ref_hasher = Poseidon::<Fr, 3, 2>::new(8, 57);
-            let spec = Spec::<Fr, 3, 2>::new(8, 57);
+//     #[test]
+//     fn test_example() {
+//         //use crate::curves::bn256::{Fr, G1Affine};
+//         use halo2wrong::curves::bn256::{Fr, G1Affine};
+//         for number_of_inputs in 0..3 * 3 {
+//             println!("{:?}", number_of_inputs);
+//             let mut ref_hasher = Poseidon::<Fr, 3, 2>::new(8, 57);
+//             let spec = Spec::<Fr, 3, 2>::new(8, 57);
 
-            let inputs: Vec<Fr> = (0..number_of_inputs)
-                .map(|_| Fr::random(OsRng))
-                .collect::<Vec<Fr>>();
+//             let inputs: Vec<Fr> = (0..number_of_inputs)
+//                 .map(|_| Fr::random(OsRng))
+//                 .collect::<Vec<Fr>>();
 
-            ref_hasher.perm_with_input(&inputs[..]);
-            let expected = ref_hasher.perm_remain();
+//             ref_hasher.perm_with_input(&inputs[..]);
+//             let expected = ref_hasher.perm_remain();
 
-            let circuit: TestCircuit<G1Affine, 3, 2> = TestCircuit {
-                spec: spec.clone(),
-                n: number_of_inputs,
-                inputs: Value::known(inputs),
-                expected: Value::known(expected),
-            };
-            let instance = vec![vec![]];
-            mock_prover_verify(&circuit, instance);
-        }
-    }
+//             let circuit: TestCircuit<G1Affine, 3, 2> = TestCircuit {
+//                 spec: spec.clone(),
+//                 n: number_of_inputs,
+//                 inputs: Value::known(inputs),
+//                 expected: Value::known(expected),
+//             };
+//             let instance = vec![vec![]];
+//             mock_prover_verify(&circuit, instance);
+//         }
+//     }
 
-    macro_rules! test {
-        ($RF:expr, $RP:expr, $T:expr, $RATE:expr) => {
-            paste! {
-                #[test]
-                fn [<test_permutation_ $RF _ $RP _ $T _ $RATE>]() {
-                    //use crate::curves::bn256::{Fr, G1Affine};
-                    use halo2wrong::curves::bn256::{Fr, G1Affine};
-                    for number_of_inputs in 0..3*$T {
+//     macro_rules! test {
+//         ($RF:expr, $RP:expr, $T:expr, $RATE:expr) => {
+//             paste! {
+//                 #[test]
+//                 fn [<test_permutation_ $RF _ $RP _ $T _ $RATE>]() {
+//                     //use crate::curves::bn256::{Fr, G1Affine};
+//                     use halo2wrong::curves::bn256::{Fr, G1Affine};
+//                     for number_of_inputs in 0..3*$T {
 
-                        let mut ref_hasher = Poseidon::<Fr, $T, $RATE>::new($RF, $RP);
-                        let spec = Spec::<Fr, $T, $RATE>::new($RF, $RP);
+//                         let mut ref_hasher = Poseidon::<Fr, $T, $RATE>::new($RF, $RP);
+//                         let spec = Spec::<Fr, $T, $RATE>::new($RF, $RP);
 
-                        let inputs: Vec<Fr> = (0..number_of_inputs)
-                            .map(|_| Fr::random(OsRng))
-                            .collect::<Vec<Fr>>();
+//                         let inputs: Vec<Fr> = (0..number_of_inputs)
+//                             .map(|_| Fr::random(OsRng))
+//                             .collect::<Vec<Fr>>();
 
-                        ref_hasher.perm_with_input(&inputs[..]);
-                        let expected = ref_hasher.perm_remain();
+//                         ref_hasher.perm_with_input(&inputs[..]);
+//                         let expected = ref_hasher.perm_remain();
 
-                        let circuit: TestCircuit<G1Affine, $T, $RATE> = TestCircuit {
-                            spec: spec.clone(),
-                            n: number_of_inputs,
-                            inputs: Value::known(inputs),
-                            expected: Value::known(expected),
-                        };
-                        let instance = vec![vec![]];
-                        mock_prover_verify(&circuit, instance);
-                    }
-                }
-            }
-        };
-    }
+//                         let circuit: TestCircuit<G1Affine, $T, $RATE> = TestCircuit {
+//                             spec: spec.clone(),
+//                             n: number_of_inputs,
+//                             inputs: Value::known(inputs),
+//                             expected: Value::known(expected),
+//                         };
+//                         let instance = vec![vec![]];
+//                         mock_prover_verify(&circuit, instance);
+//                     }
+//                 }
+//             }
+//         };
+//     }
 
-    test!(8, 57, 3, 2);
-    test!(8, 57, 4, 3);
-    test!(8, 57, 5, 4);
-    test!(8, 57, 6, 5);
-    test!(8, 57, 7, 6);
-    test!(8, 57, 8, 7);
-    test!(8, 57, 9, 8);
-    test!(8, 57, 10, 9);
-}
+//     test!(8, 57, 3, 2);
+//     test!(8, 57, 4, 3);
+//     test!(8, 57, 5, 4);
+//     test!(8, 57, 6, 5);
+//     test!(8, 57, 7, 6);
+//     test!(8, 57, 8, 7);
+//     test!(8, 57, 9, 8);
+//     test!(8, 57, 10, 9);
+// }

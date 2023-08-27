@@ -17,6 +17,14 @@ impl<F: PrimeField, const T: usize> Default for State<F, T> {
 }
 
 impl<F: PrimeField, const T: usize> State<F, T> {
+    pub(crate) fn init_state(state: [F; 5]) -> Self {
+        let mut initial_state = [F::ZERO; T];
+        initial_state.copy_from_slice(&state);
+        State(initial_state)
+    }
+}
+
+impl<F: PrimeField, const T: usize> State<F, T> {
     /// Applies sbox for all elements of the state.
     /// Only supports `alpha = 5` sbox case.
     pub(crate) fn sbox_full(&mut self) {

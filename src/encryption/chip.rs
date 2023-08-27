@@ -83,10 +83,23 @@ impl<
         ctx: &mut RegionCtx<'_, F>,
         spec: &Spec<F, T, RATE>,
         main_gate_config: &MainGateConfig,
+        key0: &F,
+        key1: &F,
     ) -> Result<Self, Error> {
         let main_gate = MainGate::<_>::new(main_gate_config.clone());
-        // wooju - TODO: set as init states rather than default
-        let initial_state = State::<_, T>::default()
+        let state  = [
+            // Domain - Maximum plaintext length of the elements of Fq, as defined
+            // F::from_u128(0x100000000 as u128),
+            // F::from_u128(MESSAGE_CAPACITY_TEST as u128),
+            F::ZERO,
+            F::ZERO,
+            F::ZERO,
+            F::ZERO,
+            // *key0,
+            // *key1,
+            F::ONE,
+        ];
+        let initial_state = State::<F, T>::init_state(state)
             .words()
             .iter()
             .map(|word| main_gate.assign_constant(ctx, *word))
@@ -346,7 +359,7 @@ impl<
         Ok(self.state.0[1].clone())
     }
 
-    pub fn pose_encrypt(
+    pub fn absorb_and_relese(
         &mut self,
         ctx: &mut RegionCtx<'_, F>,
     ) -> Result<Vec<AssignedValue<F>>, Error> {
@@ -429,7 +442,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                     cipherByteSize: CIPHER_SIZE_TEST * (F::NUM_BITS as usize) / (8 as usize),
                     cipher: [F::ZERO; CIPHER_SIZE_TEST],
                 };
-                // inputs: Value<Vec<F>>,
+
                 self.message.clone().map(|e| {
                     // == Native - Poseidon Encryption ==//
                     cipher.encrypt(&e[..], &F::ONE);
@@ -440,64 +453,46 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                     native_cipher.push(e);
                 }
 
-                // == ciruit ==//
-                let initial_state = cipher.initial_state(F::ONE);
+                // == Encryption ciruit ==//
 
-                // assign initial_state into cells.
+                // new assigns initial_state into cells.
                 let mut pos_enc_chip =
                     PoseidonCipherChip::<F, FULL_ROUND, PARTIAL_ROUND, T, RATE>::new(
                         ctx,
                         &self.spec,
                         &config.main_gate_config,
+                        &self.key.key0,
+                        &self.key.key1
                     )?;
 
+                // check the assigned initial state
                 println!("\nzk_hasher state: {:?}", pos_enc_chip.state.0);
 
-                // transpose_vec
-                let temp = Value::known(initial_state.to_vec().clone());
-                for e in temp.transpose_vec(5) {
-                    let e = main_gate.assign_value(ctx, e.map(|v| v))?;
-                    pos_enc_chip.set_inputs(&[e.clone()]);
-                }
+                // permute before state message addtion
+                pos_enc_chip.permutation(ctx, vec![])?;
 
-                // !!!!!! = zeroknight - permutation doesn't work..
-                // !!!!!!
-                pos_enc_chip.hash(ctx)?;
-                let states = pos_enc_chip.state.0.to_vec();
-                println!("zk_hasher state2: {:?}\n", states);
+                // check the permuted state
+                println!("zk_hasher state2: {:?}\n", pos_enc_chip.state.0);
 
-                // pos_enc_chip.absorbing.clear();
-
-                // assign message (inputs) into cells
-                // let mut message_state = vec![];
-
-                println!(
-                    "message len: {:?}",
-                    self.message.as_ref().transpose_vec(self.num_input).len()
-                );
+                // set the message to be an input to the encryption
                 for e in self.message.as_ref().transpose_vec(self.num_input) {
                     let e = main_gate.assign_value(ctx, e.map(|v| *v))?;
-                    // message_state.push(e);
                     pos_enc_chip.set_inputs(&[e.clone()]);
                 }
 
-                //=============================//
-
-                let cipher_text = pos_enc_chip.pose_encrypt(ctx)?;
+                // add the input to the currentn state and output encrypted result
+                let cipher_text = pos_enc_chip.absorb_and_relese(ctx)?;
 
                 println!("cipher: {:?}", cipher_text);
                 println!("native cipher: {:?}\n", native_cipher);
                 println!("cipher len: {:?}", cipher_text.len());
+
                 // [WIP]
                 // should be equal : cipher.cipher vs cipher_text
-                // if cipher_text.len() > 0 {
                 println!("check out equality..");
-                // main_gate.assert_zero(ctx, &cipher_text[0])?;
                 let _ = main_gate.assert_equal(ctx, &cipher_text[0], &native_cipher[0])?;
-                // let _ = main_gate.assert_equal(ctx, &cipher_text[0], &native_cipher[0]);
-                let _ = main_gate.assert_equal(ctx, &cipher_text[1], &native_cipher[1]);
-                // let _ = main_gate.assert_equal(ctx, &cipher_text[2], &native_cipher[2]);
-                // }
+                let _ = main_gate.assert_equal(ctx, &cipher_text[1], &native_cipher[1])?;
+                let _ = main_gate.assert_equal(ctx, &cipher_text[2], &native_cipher[2])?;
                 Ok(())
             },
         )?;
@@ -539,7 +534,7 @@ fn test_pos_enc() {
         println!("Encrypted: {:?}", cipher.cipher);
         println!("Decrypted: {:?}", cipher.decrypt(&F::ONE).unwrap());
 
-        //========== Circuit =============//
+        //== Circuit ==//
         let key = PoseidonCipherKey::<F> {
             key0: F::random(OsRng),
             key1: F::random(OsRng),
