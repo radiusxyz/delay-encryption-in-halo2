@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+// use std::marker::PhantomData;
 
 use ff::{FromUniformBytes, PrimeField};
 
@@ -19,12 +19,10 @@ use rand_core::OsRng;
 
 use crate::{
     encryption::poseidon_enc::{
-        PoseidonCipher, FULL_ROUND, MESSAGE_CAPACITY, PARTIAL_ROUND,
+        PoseidonCipher, PoseidonCipherKey, FULL_ROUND, PARTIAL_ROUND, MESSAGE_CAPACITY, CIPHER_SIZE,
     },
     poseidon,
 };
-
-use super::poseidon_enc::{PoseidonCipherKey, CIPHER_SIZE};
 
 #[derive(Debug, Clone)]
 pub struct AssignedState<F: PrimeField, const T: usize>(pub [AssignedValue<F>; T]);
@@ -34,25 +32,25 @@ pub struct PoseidonCipherConfig {
     pub main_gate_config: MainGateConfig,
 }
 
-pub struct PoseidonEncParams<
-    F: PrimeField + FromUniformBytes<64>,
-    const T: usize,
-    const RATE: usize,
-> {
-    pub R_F: usize,
-    pub R_P: usize,
-    pub cipherKey: PoseidonCipherKey<F>,
-    pub cipherByteSize: usize,
-    pub cipher: [F; CIPHER_SIZE],
-}
+// pub struct PoseidonEncParams<
+//     F: PrimeField + FromUniformBytes<64>,
+//     const T: usize,
+//     const RATE: usize,
+// > {
+//     pub R_F: usize,
+//     pub R_P: usize,
+//     pub cipherKey: PoseidonCipherKey<F>,
+//     pub cipherByteSize: usize,
+//     pub cipher: [F; CIPHER_SIZE],
+// }
 
 #[derive(Debug, Clone)]
-pub struct PoseidonCipherChip<
+pub struct PoseidonEncChip<
     F: PrimeField + FromUniformBytes<64>,
-    const R_F: usize,
-    const R_P: usize,
     const T: usize,
     const RATE: usize,
+    const R_F: usize,
+    const R_P: usize,
 > {
     pub state: AssignedState<F, T>,
     pub absorbing: Vec<AssignedValue<F>>,
@@ -66,14 +64,14 @@ impl<
         const R_P: usize,
         const T: usize,
         const RATE: usize,
-    > PoseidonCipherChip<F, R_F, R_P, T, RATE>
+    > PoseidonEncChip<F, T, RATE, R_F, R_P>
 {
     // Construct main gate
     pub fn main_gate(&self) -> MainGate<F> {
         MainGate::<_>::new(self.main_gate_config.clone())
     }
 
-    // Construct PoseidonCipherChip
+    // Construct PoseidonEncChip
     pub fn new(
         ctx: &mut RegionCtx<'_, F>,
         spec: &Spec<F, T, RATE>,
@@ -152,7 +150,7 @@ impl<
         const R_P: usize,
         const T: usize,
         const RATE: usize,
-    > PoseidonCipherChip<F, R_F, R_P, T, RATE>
+    > PoseidonEncChip<F, T, RATE, R_F, R_P>
 {
     /// Applies full state sbox then adds constants to each word in the state
     fn sbox_full(&mut self, ctx: &mut RegionCtx<'_, F>, constants: &[F; T]) -> Result<(), Error> {
@@ -391,17 +389,17 @@ impl<
     }
 }
 
-struct PoseidonCipherCircuit<
+pub(crate) struct PoseidonCipherCircuit<
     F: PrimeField + FromUniformBytes<64>,
     const T: usize,
     const RATE: usize,
 > {
     // Poseidon
-    spec: Spec<F, T, RATE>, // Spec for Poseidon Encryption
-    num_input: usize,       // zeroknight - ??
-    message: Value<Vec<F>>, // message to be encrypted
-    key: PoseidonCipherKey<F>,
-    expected: Vec<F>,       // expected cipher text
+    pub spec: Spec<F, T, RATE>, // Spec for Poseidon Encryption
+    pub num_input: usize,       // zeroknight - ??
+    pub message: Value<Vec<F>>, // message to be encrypted
+    pub key: PoseidonCipherKey<F>,
+    pub expected: Vec<F>,       // expected cipher text
 }
 
 impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Circuit<F>
@@ -444,7 +442,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
 
                 // new assigns initial_state into cells.
                 let mut pos_enc_chip =
-                    PoseidonCipherChip::<F, FULL_ROUND, PARTIAL_ROUND, T, RATE>::new(
+                    PoseidonEncChip::<F, T, RATE, FULL_ROUND, PARTIAL_ROUND>::new(
                         ctx,
                         &self.spec,
                         &config.main_gate_config,
@@ -491,7 +489,6 @@ fn test_pos_enc() {
     use crate::encryption::poseidon_enc::*;
 
     fn run<F: FromUniformBytes<64> + Ord, const T: usize, const RATE: usize>() {
-        let mut ref_hasher = Poseidon::<F, T, RATE>::new(FULL_ROUND, PARTIAL_ROUND);
         let mut ref_pos_enc = PoseidonCipher::<F, FULL_ROUND, PARTIAL_ROUND, T, RATE>::new();
 
         let spec = Spec::<F, T, RATE>::new(8, 57);
