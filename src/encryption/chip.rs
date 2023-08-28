@@ -13,13 +13,13 @@ use halo2wrong::{
 use maingate::{
     mock_prover_verify, AssignedValue, MainGate, MainGateConfig, MainGateInstructions, Term,
 };
-use num_bigint::{BigUint, RandomBits};
+
 use poseidon::{Poseidon, SparseMDSMatrix, Spec, State};
 use rand_core::OsRng;
 
 use crate::{
     encryption::poseidon_enc::{
-        PoseidonCipher, PoseidonCipherTest, FULL_ROUND, MESSAGE_CAPACITY, PARTIAL_ROUND,
+        PoseidonCipher, FULL_ROUND, MESSAGE_CAPACITY, PARTIAL_ROUND,
     },
     poseidon,
 };
@@ -27,17 +27,12 @@ use crate::{
 use super::poseidon_enc::{PoseidonCipherKey, CIPHER_SIZE};
 
 #[derive(Debug, Clone)]
-pub struct AssignedState<F: PrimeField, const T: usize>(pub [AssignedValue<F>; 5]);
-//pub struct AssignedState<F: PrimeField, const T: usize>(pub(super) [AssignedValue<F>; T]);
+pub struct AssignedState<F: PrimeField, const T: usize>(pub [AssignedValue<F>; T]);
 
 #[derive(Clone, Debug)]
 pub struct PoseidonCipherConfig {
-    // pub rsa_config: RSAConfig,
     pub main_gate_config: MainGateConfig,
 }
-
-pub const MESSAGE_CAPACITY_TEST: usize = 2;
-pub const CIPHER_SIZE_TEST: usize = MESSAGE_CAPACITY_TEST + 1;
 
 pub struct PoseidonEncParams<
     F: PrimeField + FromUniformBytes<64>,
@@ -48,7 +43,7 @@ pub struct PoseidonEncParams<
     pub R_P: usize,
     pub cipherKey: PoseidonCipherKey<F>,
     pub cipherByteSize: usize,
-    pub cipher: [F; CIPHER_SIZE_TEST],
+    pub cipher: [F; CIPHER_SIZE],
 }
 
 #[derive(Debug, Clone)]
@@ -91,12 +86,14 @@ impl<
             // Domain - Maximum plaintext length of the elements of Fq, as defined
             // F::from_u128(0x100000000 as u128),
             // F::from_u128(MESSAGE_CAPACITY_TEST as u128),
-            F::ZERO,
-            F::ZERO,
-            F::ZERO,
-            F::ZERO,
             // *key0,
             // *key1,
+
+            // debuging purpose
+            F::ZERO,
+            F::ZERO,
+            F::ZERO,
+            F::ZERO,
             F::ONE,
         ];
         let initial_state = State::<F, T>::init_state(state)
@@ -120,7 +117,6 @@ impl<
     /*
         Internally expose poseidion parameters and matrices
     */
-
     pub(super) fn r_f_half(&self) -> usize {
         self.spec.r_f() / 2
     }
@@ -381,7 +377,7 @@ impl<
             // Add inputs along with constants
             for (word, input) in self.state.0.iter_mut().skip(1).zip(inputs.iter()) {
                 *word = main_gate.add(ctx, word, input)?;
-                if i < MESSAGE_CAPACITY_TEST {
+                if i < MESSAGE_CAPACITY {
                     cipher_text.push(word.clone());
                     i += 1;
                 }
@@ -405,8 +401,7 @@ struct PoseidonCipherCircuit<
     num_input: usize,       // zeroknight - ??
     message: Value<Vec<F>>, // message to be encrypted
     key: PoseidonCipherKey<F>,
-    expected: Value<F>,       // expected cipher text
-    encrypted: Value<Vec<F>>, // cipher text from the circuit
+    expected: Vec<F>,       // expected cipher text
 }
 
 impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Circuit<F>
@@ -437,20 +432,12 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 let offset = 0;
                 let ctx = &mut RegionCtx::new(region, offset);
 
-                let mut cipher = PoseidonCipherTest::<F, T, RATE> {
-                    cipherKey: self.key.clone(),
-                    cipherByteSize: CIPHER_SIZE_TEST * (F::NUM_BITS as usize) / (8 as usize),
-                    cipher: [F::ZERO; CIPHER_SIZE_TEST],
-                };
+                let mut expected_result = vec![];
 
-                self.message.clone().map(|e| {
-                    // == Native - Poseidon Encryption ==//
-                    cipher.encrypt(&e[..], &F::ONE);
-                });
-                let mut native_cipher = vec![];
-                for e in cipher.cipher.clone() {
-                    let e = main_gate.assign_value(ctx, Value::known(e.clone()))?;
-                    native_cipher.push(e);
+                // assign expected result
+                for result in &self.expected {
+                    let result = main_gate.assign_value(ctx, Value::known(result.clone()))?;
+                    expected_result.push(result);
                 }
 
                 // == Encryption ciruit ==//
@@ -466,13 +453,13 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                     )?;
 
                 // check the assigned initial state
-                println!("\nzk_hasher state: {:?}", pos_enc_chip.state.0);
+                println!("\nzk_state: {:?}", pos_enc_chip.state.0);
 
                 // permute before state message addtion
                 pos_enc_chip.permutation(ctx, vec![])?;
 
                 // check the permuted state
-                println!("zk_hasher state2: {:?}\n", pos_enc_chip.state.0);
+                println!("zk_state2: {:?}\n", pos_enc_chip.state.0);
 
                 // set the message to be an input to the encryption
                 for e in self.message.as_ref().transpose_vec(self.num_input) {
@@ -484,15 +471,14 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 let cipher_text = pos_enc_chip.absorb_and_relese(ctx)?;
 
                 println!("cipher: {:?}", cipher_text);
-                println!("native cipher: {:?}\n", native_cipher);
+                println!("expected cipher: {:?}\n", expected_result);
                 println!("cipher len: {:?}", cipher_text.len());
 
-                // [WIP]
-                // should be equal : cipher.cipher vs cipher_text
+                // constrain with encryption result
                 println!("check out equality..");
-                let _ = main_gate.assert_equal(ctx, &cipher_text[0], &native_cipher[0])?;
-                let _ = main_gate.assert_equal(ctx, &cipher_text[1], &native_cipher[1])?;
-                let _ = main_gate.assert_equal(ctx, &cipher_text[2], &native_cipher[2])?;
+                let _ = main_gate.assert_equal(ctx, &cipher_text[0], &expected_result[0])?;
+                let _ = main_gate.assert_equal(ctx, &cipher_text[1], &expected_result[1])?;
+                let _ = main_gate.assert_equal(ctx, &cipher_text[2], &expected_result[2])?;
                 Ok(())
             },
         )?;
@@ -506,47 +492,30 @@ fn test_pos_enc() {
 
     fn run<F: FromUniformBytes<64> + Ord, const T: usize, const RATE: usize>() {
         let mut ref_hasher = Poseidon::<F, T, RATE>::new(FULL_ROUND, PARTIAL_ROUND);
+        let mut ref_pos_enc = PoseidonCipher::<F, FULL_ROUND, PARTIAL_ROUND, T, RATE>::new();
 
         let spec = Spec::<F, T, RATE>::new(8, 57);
-        let inputs = (0..(MESSAGE_CAPACITY_TEST))
-            // .map(|_| F::random(OsRng))
+        let inputs = (0..(MESSAGE_CAPACITY))
             .map(|_| F::ZERO)
             .collect::<Vec<F>>();
-        ref_hasher.perm_with_input(&inputs[..]);
-        let expected = ref_hasher.perm_remain();
 
-        //======== Poseidon Encryption ============//
+        //== Poseidon Encryption ==//
+
+        let ref_cipher = ref_pos_enc.encrypt(&inputs, &F::ONE);
+
+
         let key = PoseidonCipherKey::<F> {
             key0: F::random(OsRng),
             key1: F::random(OsRng),
         };
-
-        let mut cipher = PoseidonCipherTest::<F, T, RATE> {
-            cipherKey: key.clone(),
-            cipherByteSize: CIPHER_SIZE_TEST * (F::NUM_BITS as usize) / 8,
-            cipher: [F::ZERO; CIPHER_SIZE_TEST],
-        };
-
-        // let message = [F::random(OsRng), F::random(OsRng)];
-        let message = [F::ZERO, F::ZERO];
-        cipher.encrypt(&message, &F::ONE);
-        println!("Messages.: {:?}", message);
-        println!("Encrypted: {:?}", cipher.cipher);
-        println!("Decrypted: {:?}", cipher.decrypt(&F::ONE).unwrap());
-
         //== Circuit ==//
-        let key = PoseidonCipherKey::<F> {
-            key0: F::random(OsRng),
-            key1: F::random(OsRng),
-        };
-
+        
         let circuit = PoseidonCipherCircuit::<F, T, RATE> {
             spec: spec.clone(),
-            num_input: MESSAGE_CAPACITY_TEST,
+            num_input: MESSAGE_CAPACITY,
             message: Value::known(inputs),
             key: key.clone(),
-            expected: Value::known(expected),
-            encrypted: Value::known(cipher.cipher.to_vec()),
+            expected: ref_cipher.to_vec(),
         };
 
         let public_inputs = vec![vec![]];

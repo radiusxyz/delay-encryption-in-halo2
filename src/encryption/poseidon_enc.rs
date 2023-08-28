@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{marker::PhantomData, default};
 
 use ff::{Field, FromUniformBytes, PrimeField};
 use halo2wrong::curves::bn256;
@@ -9,7 +9,7 @@ use std::str::FromStr;
 
 use crate::poseidon;
 
-pub const MESSAGE_CAPACITY: usize = 10;
+pub const MESSAGE_CAPACITY: usize = 2;
 pub const CIPHER_SIZE: usize = MESSAGE_CAPACITY + 1;
 pub(crate) const FULL_ROUND: usize = 8;
 pub(crate) const PARTIAL_ROUND: usize = 57;
@@ -20,6 +20,16 @@ pub struct PoseidonCipherKey<F: PrimeField> {
     pub key1: F,
 }
 
+impl<F: PrimeField> PoseidonCipherKey<F> {
+    /// The default impl for key
+    const fn init() -> Self {
+        PoseidonCipherKey{
+        key0: F::ZERO,
+        key1: F::ZERO,}
+    }
+}
+
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PoseidonCipher<
     F: PrimeField + FromUniformBytes<64>,
@@ -28,7 +38,10 @@ pub struct PoseidonCipher<
     const T: usize,
     const RATE: usize,
 > {
-    cipher_bytes_size: usize,
+    // cipher_bytes_size: usize,
+    pub cipherKey: PoseidonCipherKey<F>,
+    pub cipherByteSize: usize,
+    pub cipher: [F; CIPHER_SIZE],
     _spec: PhantomData<F>,
 }
 
@@ -39,7 +52,9 @@ where
 {
     pub const fn new() -> Self {
         Self {
-            cipher_bytes_size: CIPHER_SIZE * (F::NUM_BITS as usize) / 8,
+            cipherKey: PoseidonCipherKey::<F>::init(),
+            cipherByteSize: CIPHER_SIZE * (F::NUM_BITS as usize) / 8,
+            cipher: [F::ZERO; CIPHER_SIZE],
             _spec: PhantomData,
         }
     }
@@ -51,21 +66,21 @@ where
         CIPHER_SIZE
     }
 
-    pub fn initial_state(key: &PoseidonCipherKey<F>, nonce: F) -> [F; 5] {
-        // zeroknight : 5?!
-        [
-            // Domain - Maximum plaintext length of the elements of Fq, as defined
-            // F::from_u128(0x100000000 as u128),
-            // F::from_u128(MESSAGE_CAPACITY_TEST as u128),
-            F::ZERO,
-            F::ZERO,
-            F::ZERO,
-            F::ZERO,
-            // *key0,
-            // *key1,
-            F::ONE,
-        ]
-    }
+    // pub fn initial_state(key: &PoseidonCipherKey<F>, nonce: F) -> [F; 5] {
+    //     // zeroknight : 5?!
+    //     [
+    //         // Domain - Maximum plaintext length of the elements of Fq, as defined
+    //         // F::from_u128(0x100000000 as u128),
+    //         // F::from_u128(MESSAGE_CAPACITY as u128),
+    //         F::ZERO,
+    //         F::ZERO,
+    //         F::ZERO,
+    //         F::ZERO,
+    //         // *key0,
+    //         // *key1,
+    //         F::ONE,
+    //     ]
+    // }
 
     /*
     pub fn encrypt_string(&self, message: String, key: &PoseidonCipherKey<F>) -> (Vec<String>, F, [F; MESSAGE_CAPACITY], [F;CIPHER_SIZE]) {
@@ -86,93 +101,98 @@ where
         bytes
     }
     */
-
-    pub fn encrypt(&self, message: &[F], key: &PoseidonCipherKey<F>) -> ([F; CIPHER_SIZE], F) {
-        let nonce = F::random(OsRng);
-
-        let mut hasher = Poseidon::<F, T, RATE>::new(r_f, r_p);
-        // let mut state = PoseidonCipher::<F, r_f, r_p, T, RATE>::initial_state(key, nonce);
-        let mut state = hasher.state.0;
-
-        let mut cipher = [F::ZERO; CIPHER_SIZE];
-        let count = (MESSAGE_CAPACITY + 3) / 4;
-
-        (0..count).for_each(|i| {
-            hasher.perm_with_input(&vec![]);
-
-            (0..4).for_each(|j| {
-                if 4 * i + j < MESSAGE_CAPACITY {
-                    state[j + 1] += if 4 * i + j < message.len() {
-                        message[4 * i + j]
-                    } else {
-                        F::ZERO
-                    };
-
-                    cipher[4 * i + j] = state[j + 1];
-                }
-            })
-        });
-        hasher.perm_with_input(&state);
-        cipher[MESSAGE_CAPACITY] = state[1];
-
-        (cipher, nonce)
+    pub fn initial_state(&self, nonce: F) -> [F; 5] {
+        // zeroknight - 5 : T ?!
+        [
+            // Domain - Maximum plaintext length of the elements of Fq, as defined
+            // F::from_u128(0x100000000 as u128),
+            // F::from_u128(MESSAGE_CAPACITY as u128),
+            F::ZERO,
+            F::ZERO,
+            F::ZERO,
+            F::ZERO,
+            // self.cipherKey.key0,
+            // self.cipherKey.key1,
+            nonce,
+        ]
     }
 
-    pub fn decrypt(
-        &self,
-        cipherText: &[F; CIPHER_SIZE],
-        key: &PoseidonCipherKey<F>,
-        nonce: F,
-    ) -> Option<[F; MESSAGE_CAPACITY]> {
-        let mut hasher = Poseidon::<F, T, RATE>::new(r_f, r_p);
+    pub fn encrypt(&mut self, message: &[F], nonce: &F) -> [F; CIPHER_SIZE] {
+        let mut hasher = Poseidon::<F, T, RATE>::new(FULL_ROUND, PARTIAL_ROUND);
 
-        // let mut state = PoseidonCipher::<F, r_f, r_p, T, RATE>::initial_state(key, nonce);
-        let mut state = hasher.state.0;
+        println!("ref_hahser state: {:?}", hasher.state.words().clone());
+
+        let mut cipher = [F::ZERO; CIPHER_SIZE];
+        // let mut state = self.initial_state(*nonce);
+
+        // zeroknight : permutation is update in Poseidon
+        hasher.perm_with_input(&vec![]);
+        hasher.perm_remain();
+
+        println!("ref_hahser state2: {:?}", hasher.state.words().clone());
+
+        let mut state_2 = hasher.state.words().clone();
+
+        (0..MESSAGE_CAPACITY).for_each(|i| {
+            state_2[i + 1] += if i < message.len() {
+                message[i]
+            } else {
+                F::ZERO
+            };
+            cipher[i] = state_2[i + 1];
+        });
+        hasher.perm_with_input(&message);
+        hasher.perm_remain();
+
+        let state_3 = hasher.state.words().clone();
+        cipher[MESSAGE_CAPACITY] = state_3[1];
+
+        self.cipher = cipher;
+
+        cipher
+    }
+
+    pub fn decrypt(&mut self, nonce: &F) -> Option<[F; MESSAGE_CAPACITY]> {
+        let mut hasher = Poseidon::<F, T, RATE>::new(FULL_ROUND, PARTIAL_ROUND);
 
         let mut message = [F::ZERO; MESSAGE_CAPACITY];
+        let mut state = self.initial_state(*nonce);
 
-        let count = (MESSAGE_CAPACITY + 3) / 4;
+        hasher.perm_with_input(&vec![]);
+        hasher.perm_remain();
 
-        (0..count).for_each(|i| {
-            hasher.perm_with_input(&state);
+        let mut state_2 = hasher.state.words().clone();
 
-            (0..4).for_each(|j| {
-                if 4 * i + j < MESSAGE_CAPACITY {
-                    message[4 * i + j] = cipherText[4 * i + j] - state[j + 1];
-                    state[j + 1] = cipherText[4 * i + j];
-                }
-            });
+        (0..MESSAGE_CAPACITY).for_each(|i| {
+            message[i] = self.cipher[i] - state_2[i + 1];
+            state_2[i + 1] = self.cipher[i];
         });
-        hasher.perm_with_input(&state);
 
-        if cipherText[MESSAGE_CAPACITY] != state[1] {
+        hasher.perm_with_input(&mut message);
+        hasher.perm_remain();
+
+        let mut state_3 = hasher.state.words().clone();
+
+        if self.cipher[MESSAGE_CAPACITY] != state_3[1] {
             return None;
         }
-
         Some(message)
     }
 }
 
 #[test]
-fn test() {
-    let key = PoseidonCipherKey::<bn256::Fr> {
-        key0: bn256::Fr::random(OsRng),
-        key1: bn256::Fr::random(OsRng),
-    };
+fn test_encryption() {
 
-    let cipher = PoseidonCipher::<bn256::Fr, 8, 57, 5, 4>::new();
-    let message = [bn256::Fr::random(OsRng); MESSAGE_CAPACITY];
+    let mut cipher = PoseidonCipher::<bn256::Fr, 8, 57, 5, 4>::new();
+    let message = [bn256::Fr::ZERO; MESSAGE_CAPACITY];
 
     println!("message: {:?}", message);
 
-    let (cipherText, nonce) = cipher.encrypt(&message, &key);
+    let cipherText = cipher.encrypt(&message, &bn256::Fr::ONE);
     println!("encrypted: {:?}", cipherText);
-    println!("decrypted: {:?}", cipher.decrypt(&cipherText, &key, nonce));
+    println!("decrypted: {:?}", cipher.decrypt(&bn256::Fr::ONE));
+    
 }
-
-// zeroknight - test : only support for poseidon encryption with message of length 2.
-pub const MESSAGE_CAPACITY_TEST: usize = 2;
-pub const CIPHER_SIZE_TEST: usize = MESSAGE_CAPACITY_TEST + 1;
 
 pub struct PoseidonCipherTest<
     F: PrimeField + FromUniformBytes<64>,
@@ -181,7 +201,7 @@ pub struct PoseidonCipherTest<
 > {
     pub cipherKey: PoseidonCipherKey<F>,
     pub cipherByteSize: usize,
-    pub cipher: [F; CIPHER_SIZE_TEST],
+    pub cipher: [F; CIPHER_SIZE],
 }
 
 impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize>
@@ -192,7 +212,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize>
         Self {
             cipherKey: *key,
             cipherByteSize,
-            cipher: [F::ZERO; CIPHER_SIZE_TEST],
+            cipher: [F::ZERO; CIPHER_SIZE],
         }
     }
 
@@ -205,7 +225,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize>
         [
             // Domain - Maximum plaintext length of the elements of Fq, as defined
             // F::from_u128(0x100000000 as u128),
-            // F::from_u128(MESSAGE_CAPACITY_TEST as u128),
+            // F::from_u128(MESSAGE_CAPACITY as u128),
             F::ZERO,
             F::ZERO,
             self.cipherKey.key0,
@@ -225,7 +245,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize>
 
         println!("ref_hahser state: {:?}", hasher.state.words().clone());
 
-        let mut cipher = [F::ZERO; CIPHER_SIZE_TEST];
+        let mut cipher = [F::ZERO; CIPHER_SIZE];
         let mut state = self.initial_state(*nonce);
 
         // zeroknight : permutation is update in Poseidon
@@ -236,7 +256,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize>
 
         let mut state_2 = hasher.state.words().clone();
 
-        (0..MESSAGE_CAPACITY_TEST).for_each(|i| {
+        (0..MESSAGE_CAPACITY).for_each(|i| {
             state_2[i + 1] += if i < message.len() {
                 message[i]
             } else {
@@ -248,15 +268,15 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize>
         hasher.perm_remain();
 
         let mut state_3 = hasher.state.words().clone();
-        cipher[MESSAGE_CAPACITY_TEST] = state_3[1];
+        cipher[MESSAGE_CAPACITY] = state_3[1];
 
         self.cipher = cipher;
     }
 
-    pub fn decrypt(&mut self, nonce: &F) -> Option<[F; MESSAGE_CAPACITY_TEST]> {
+    pub fn decrypt(&mut self, nonce: &F) -> Option<[F; MESSAGE_CAPACITY]> {
         let mut hasher = Poseidon::<F, T, RATE>::new(FULL_ROUND, PARTIAL_ROUND);
 
-        let mut message = [F::ZERO; MESSAGE_CAPACITY_TEST];
+        let mut message = [F::ZERO; MESSAGE_CAPACITY];
         let mut state = self.initial_state(*nonce);
 
         hasher.perm_with_input(&vec![]);
@@ -264,7 +284,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize>
 
         let mut state_2 = hasher.state.words().clone();
 
-        (0..MESSAGE_CAPACITY_TEST).for_each(|i| {
+        (0..MESSAGE_CAPACITY).for_each(|i| {
             message[i] = self.cipher[i] - state_2[i + 1];
             state_2[i + 1] = self.cipher[i];
         });
@@ -274,7 +294,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize>
 
         let mut state_3 = hasher.state.words().clone();
 
-        if self.cipher[MESSAGE_CAPACITY_TEST] != state_3[1] {
+        if self.cipher[MESSAGE_CAPACITY] != state_3[1] {
             return None;
         }
         Some(message)
@@ -296,8 +316,8 @@ fn test_poseidon_encryption_simple() {
 
     let mut cipher = PoseidonCipherTest::<bn256::Fr, 5, 4> {
         cipherKey: key.clone(),
-        cipherByteSize: CIPHER_SIZE_TEST * (bn256::Fr::NUM_BITS as usize) / (8 as usize),
-        cipher: [bn256::Fr::ZERO; CIPHER_SIZE_TEST],
+        cipherByteSize: CIPHER_SIZE * (bn256::Fr::NUM_BITS as usize) / (8 as usize),
+        cipher: [bn256::Fr::ZERO; CIPHER_SIZE],
     };
 
     let message = [bn256::Fr::random(OsRng), bn256::Fr::random(OsRng)];

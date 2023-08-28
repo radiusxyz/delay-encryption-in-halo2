@@ -7,9 +7,9 @@ pub mod rsa;
 pub use crate::rsa::*;
 use encryption::{
     poseidon_enc::{
-        PoseidonCipherKey, PoseidonCipherTest, CIPHER_SIZE_TEST, MESSAGE_CAPACITY_TEST,
+        PoseidonCipherKey, PoseidonCipherTest, CIPHER_SIZE, MESSAGE_CAPACITY,
     },
-    PoseidonCipherInstructions,
+    // PoseidonCipherInstructions,
 };
 use hash::hasher::HasherChip;
 use rand_core::OsRng;
@@ -374,8 +374,8 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
 
                 let mut cipher = PoseidonCipherTest::<F, T, RATE> {
                     cipherKey: self.key.clone(),
-                    cipherByteSize: CIPHER_SIZE_TEST * (F::NUM_BITS as usize) / (8 as usize),
-                    cipher: [F::ZERO; CIPHER_SIZE_TEST],
+                    cipherByteSize: CIPHER_SIZE * (F::NUM_BITS as usize) / (8 as usize),
+                    cipher: [F::ZERO; CIPHER_SIZE],
                 };
                 // inputs: Value<Vec<F>>,
                 self.inputs.clone().map(|e| {
@@ -430,7 +430,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
 
                 let mut cipher_text = vec![];
                 let mut next_states = hasher_chip.state.0.to_vec().clone();
-                (0..MESSAGE_CAPACITY_TEST).for_each(|i| {
+                (0..MESSAGE_CAPACITY).for_each(|i| {
                     //let mut current_states = hasher_chip.absorbing.clone();
                     // println!("length : {}", current_states.len());
                     if i < message_state.len() {
@@ -458,7 +458,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 hasher_chip.update(&next_states[..]);
                 hasher_chip.hash(ctx);
 
-                // [Native] cipher[MESSAGE_CAPACITY_TEST] = state[1];
+                // [Native] cipher[MESSAGE_CAPACITY] = state[1];
                 let mut next_states_2 = hasher_chip.state.0.to_vec().clone();
 
                 cipher_text.push(next_states_2[1].clone());
@@ -496,8 +496,8 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                     r_f: 8,
                     r_p: 57,
                     cipherKey: self.key.clone(),
-                    cipherByteSize: CIPHER_SIZE_TEST * (F::NUM_BITS as usize) / (8 as usize),
-                    cipher: [F::ZERO; CIPHER_SIZE_TEST],
+                    cipherByteSize: CIPHER_SIZE * (F::NUM_BITS as usize) / (8 as usize),
+                    cipher: [F::ZERO; CIPHER_SIZE],
                 };
                 self.inputs.clone().map(|e| {
                     // == Native - Poseidon Encryption ==//
@@ -543,8 +543,8 @@ fn test_poseidon_encryption() {
 
         let mut cipher = PoseidonCipherTest::<F, T, RATE> {
             cipherKey: key.clone(),
-            cipherByteSize: CIPHER_SIZE_TEST * (F::NUM_BITS as usize) / 8,
-            cipher: [F::ZERO; CIPHER_SIZE_TEST],
+            cipherByteSize: CIPHER_SIZE * (F::NUM_BITS as usize) / 8,
+            cipher: [F::ZERO; CIPHER_SIZE],
         };
 
         let message = [F::random(OsRng), F::random(OsRng)];
