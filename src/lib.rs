@@ -1,6 +1,9 @@
 pub mod big_integer;
 pub use big_integer::*;
 
+pub mod hash;
+pub use hash::*;
+
 pub mod rsa;
 use crate::encryption::poseidon_enc::PoseidonCipher;
 pub use crate::rsa::*;
@@ -49,7 +52,7 @@ struct DelayEncCircuitConfig {
 #[derive(Debug, Clone)]
 struct DelayEncChip<F: PrimeField + ff::FromUniformBytes<64>, const T: usize, const RATE: usize> {
     rsa_chip: RSAChip<F>,
-    enc_chip: PoseidonEncChip<F, T, RATE, FULL_ROUND, PARTIAL_ROUND>,
+    enc_chip: PoseidonChip<F, T, RATE, FULL_ROUND, PARTIAL_ROUND>,
 }
 
 impl<F: PrimeField + ff::FromUniformBytes<64>, const T: usize, const RATE: usize>
@@ -57,7 +60,7 @@ impl<F: PrimeField + ff::FromUniformBytes<64>, const T: usize, const RATE: usize
 {
     pub fn new(
         rsa_chip: RSAChip<F>,
-        enc_chip: PoseidonEncChip<F, T, RATE, FULL_ROUND, PARTIAL_ROUND>,
+        enc_chip: PoseidonChip<F, T, RATE, FULL_ROUND, PARTIAL_ROUND>,
     ) -> Self {
         Self { rsa_chip, enc_chip }
     }
@@ -138,8 +141,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
         let limb_width = Self::LIMB_WIDTH;
         let num_limbs = Self::BITS_LEN / Self::LIMB_WIDTH;
 
-        layouter.assign_region(
-            //name, assignment)
+        let rsa_output = layouter.assign_region(
             || "rsa modpow with 2048 bits",
             |region| {
                 let offset = 0;
@@ -148,15 +150,12 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                     (self.e.clone(), 1, Self::EXP_LIMB_BITS); // EXP_LIMB_BITS 5
                 let e_unassigned = UnassignedInteger::from(e_limbs);
                 let e_var = RSAPubE::Var(e_unassigned);
-                let e_fix = RSAPubE::Fix(BigUint::from(Self::DEFAULT_E));
 
                 let n_limbs = decompose_big::<F>(self.n.clone(), num_limbs, limb_width);
                 let n_unassigned = UnassignedInteger::from(n_limbs);
 
                 let public_key_var = RSAPublicKey::new(n_unassigned.clone(), e_var);
                 let public_key_var = rsa_chip.assign_public_key(ctx, public_key_var)?;
-                let public_key_fix = RSAPublicKey::new(n_unassigned, e_fix);
-                let public_key_fix = rsa_chip.assign_public_key(ctx, public_key_fix)?;
 
                 let x_limbs = decompose_big::<F>(self.x.clone(), num_limbs, limb_width);
                 let x_unssigned = UnassignedInteger::from(x_limbs);
@@ -165,24 +164,33 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 let x_assigned = bigint_chip.assign_integer(ctx, x_unssigned)?;
                 // Given a base x, a RSA public key (e,n), performs the modular power x^e mod n.
                 let powed_var = rsa_chip.modpow_public_key(ctx, &x_assigned, &public_key_var)?;
-                let powed_fix = rsa_chip.modpow_public_key(ctx, &x_assigned, &public_key_fix)?;
 
                 let valid_powed_var = big_pow_mod(&self.x, &self.e, &self.n);
-                let valid_powed_fix =
-                    big_pow_mod(&self.x, &BigUint::from(Self::DEFAULT_E), &self.n);
 
                 let valid_powed_var = bigint_chip.assign_constant_fresh(ctx, valid_powed_var)?;
-                let valid_powed_fix = bigint_chip.assign_constant_fresh(ctx, valid_powed_fix)?;
                 bigint_chip.assert_equal_fresh(ctx, &powed_var, &valid_powed_var)?;
-                bigint_chip.assert_equal_fresh(ctx, &powed_fix, &valid_powed_fix)?;
 
-                Ok(())
+                Ok(valid_powed_var)
             },
         )?;
+
+        layouter.assign_region(
+            || "2048 bits mapping",
+            |region| {
+                let offset = 0;
+                let ctx = &mut RegionCtx::new(region, offset);
+
+                todo!()
+            },
+        )?;
+
         let range_chip = bigint_chip.range_chip();
         range_chip.load_table(&mut layouter)?;
 
         let main_gate = rsa_chip.main_gate();
+
+
+        
         // let mut main_gate = config.poseidon_config.main_gate_config.clone(); //main_gate()
         layouter.assign_region(
             || "poseidon region",
@@ -202,14 +210,13 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
 
                 // new assigns initial_state into cells.
 
-                let mut pos_enc_chip =
-                    PoseidonEncChip::<F, T, RATE, FULL_ROUND, PARTIAL_ROUND>::new(
-                        ctx,
-                        &self.spec,
-                        &config.poseidon_config.main_gate_config,
-                        &self.key.key0,
-                        &self.key.key1,
-                    )?;
+                let mut pos_enc_chip = PoseidonChip::<F, T, RATE, FULL_ROUND, PARTIAL_ROUND>::new(
+                    ctx,
+                    &self.spec,
+                    &config.poseidon_config.main_gate_config,
+                    &self.key.key0,
+                    &self.key.key1,
+                )?;
 
                 // check the assigned initial state
                 println!("\nzk_state: {:?}", pos_enc_chip.state.0);

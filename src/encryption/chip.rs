@@ -31,7 +31,7 @@ pub struct PoseidonCipherConfig {
 }
 
 #[derive(Debug, Clone)]
-pub struct PoseidonEncChip<
+pub struct PoseidonChip<
     F: PrimeField + FromUniformBytes<64>,
     const T: usize,
     const RATE: usize,
@@ -50,14 +50,14 @@ impl<
         const R_P: usize,
         const T: usize,
         const RATE: usize,
-    > PoseidonEncChip<F, T, RATE, R_F, R_P>
+    > PoseidonChip<F, T, RATE, R_F, R_P>
 {
     // Construct main gate
     pub fn main_gate(&self) -> MainGate<F> {
         MainGate::<_>::new(self.main_gate_config.clone())
     }
 
-    // Construct PoseidonEncChip
+    // Construct PoseidonChip
     pub fn new(
         ctx: &mut RegionCtx<'_, F>,
         spec: &Spec<F, T, RATE>,
@@ -136,7 +136,7 @@ impl<
         const R_P: usize,
         const T: usize,
         const RATE: usize,
-    > PoseidonEncChip<F, T, RATE, R_F, R_P>
+    > PoseidonChip<F, T, RATE, R_F, R_P>
 {
     /// Applies full state sbox then adds constants to each word in the state
     fn sbox_full(&mut self, ctx: &mut RegionCtx<'_, F>, constants: &[F; T]) -> Result<(), Error> {
@@ -406,14 +406,13 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 // == Encryption ciruit ==//
 
                 // new assigns initial_state into cells.
-                let mut pos_enc_chip =
-                    PoseidonEncChip::<F, T, RATE, FULL_ROUND, PARTIAL_ROUND>::new(
-                        ctx,
-                        &self.spec,
-                        &config.main_gate_config,
-                        &self.key.key0,
-                        &self.key.key1,
-                    )?;
+                let mut pos_enc_chip = PoseidonChip::<F, T, RATE, FULL_ROUND, PARTIAL_ROUND>::new(
+                    ctx,
+                    &self.spec,
+                    &config.main_gate_config,
+                    &self.key.key0,
+                    &self.key.key1,
+                )?;
 
                 // check the assigned initial state
                 println!("\nzk_state: {:?}", pos_enc_chip.state.0);

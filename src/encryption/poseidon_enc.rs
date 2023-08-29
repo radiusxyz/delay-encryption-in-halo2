@@ -81,7 +81,7 @@ where
     }
 
     pub fn encrypt(&mut self, message: &[F], nonce: &F) -> [F; CIPHER_SIZE] {
-        let mut encrypter = Poseidon::<F, T, RATE>::new(FULL_ROUND, PARTIAL_ROUND);
+        let mut encrypter = Poseidon::<F, T, RATE>::new_enc(FULL_ROUND, PARTIAL_ROUND);
 
         println!("ref_hahser state: {:?}", encrypter.state.words().clone());
 
@@ -89,7 +89,7 @@ where
 
         // zeroknight : permutation is update in Poseidon
         encrypter.perm_with_input(&vec![]);
-        encrypter.perm_remain();
+        encrypter.perm_remain(0);
 
         println!("ref_hahser state2: {:?}", encrypter.state.words().clone());
 
@@ -104,7 +104,7 @@ where
             cipher[i] = state_2[i + 1];
         });
         encrypter.perm_with_input(&message);
-        encrypter.perm_remain();
+        encrypter.perm_remain(0);
 
         let state_3 = encrypter.state.words().clone();
         cipher[MESSAGE_CAPACITY] = state_3[1];
@@ -115,12 +115,12 @@ where
     }
 
     pub fn decrypt(&mut self, nonce: &F) -> Option<[F; MESSAGE_CAPACITY]> {
-        let mut encrypter = Poseidon::<F, T, RATE>::new(FULL_ROUND, PARTIAL_ROUND);
+        let mut encrypter = Poseidon::<F, T, RATE>::new_enc(FULL_ROUND, PARTIAL_ROUND);
 
         let mut message = [F::ZERO; MESSAGE_CAPACITY];
 
         encrypter.perm_with_input(&vec![]);
-        encrypter.perm_remain();
+        encrypter.perm_remain(0);
 
         let mut state_2 = encrypter.state.words().clone();
 
@@ -130,7 +130,7 @@ where
         });
 
         encrypter.perm_with_input(&mut message);
-        encrypter.perm_remain();
+        encrypter.perm_remain(0);
 
         let state_3 = encrypter.state.words().clone();
 

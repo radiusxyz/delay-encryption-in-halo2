@@ -12,10 +12,19 @@ pub struct Poseidon<F: PrimeField, const T: usize, const RATE: usize> {
 
 impl<F: FromUniformBytes<64>, const T: usize, const RATE: usize> Poseidon<F, T, RATE> {
     /// Constructs a clear state poseidon instance
-    pub fn new(r_f: usize, r_p: usize) -> Self {
+    pub fn new_enc(r_f: usize, r_p: usize) -> Self {
         Self {
             spec: Spec::new(r_f, r_p),
             state: State::init_state([F::ZERO, F::ZERO, F::ZERO, F::ZERO, F::ONE]),
+            // state: State::default(),
+            absorbing: Vec::new(),
+        }
+    }
+    /// Constructs a state for poseidon hash
+    pub fn new_hash(r_f: usize, r_p: usize) -> Self {
+        Self {
+            spec: Spec::new(r_f, r_p),
+            state: State::default(),
             absorbing: Vec::new(),
         }
     }
@@ -45,11 +54,17 @@ impl<F: FromUniformBytes<64>, const T: usize, const RATE: usize> Poseidon<F, T, 
     }
 
     /// Results a single element by absorbing already added inputs
-    pub fn perm_remain(&mut self) -> F {
+    /// if set h_flag = 1, the add additional padding F::ONE
+    pub fn perm_remain(&mut self, h_flag: usize) -> F {
         let mut last_chunk = self.absorbing.clone();
         {
             // Expect padding offset to be in [0, RATE)
             debug_assert!(last_chunk.len() < RATE);
+        }
+        // Add the finishing sign of the variable length hashing. Note that this mut
+        // also apply when absorbing line is empty
+        if h_flag == 1 {
+            last_chunk.push(F::ONE);
         }
 
         for (input_element, state) in last_chunk.iter().zip(self.state.0.iter_mut().skip(1)) {
