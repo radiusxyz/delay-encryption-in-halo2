@@ -1,5 +1,3 @@
-// use std::marker::PhantomData;
-
 use ff::{FromUniformBytes, PrimeField};
 
 use halo2wrong::{
@@ -19,7 +17,7 @@ use rand_core::OsRng;
 
 use crate::{
     encryption::poseidon_enc::{
-        PoseidonCipher, PoseidonCipherKey, FULL_ROUND, PARTIAL_ROUND, MESSAGE_CAPACITY, CIPHER_SIZE,
+        PoseidonCipher, PoseidonCipherKey, CIPHER_SIZE, FULL_ROUND, MESSAGE_CAPACITY, PARTIAL_ROUND,
     },
     poseidon,
 };
@@ -31,18 +29,6 @@ pub struct AssignedState<F: PrimeField, const T: usize>(pub [AssignedValue<F>; T
 pub struct PoseidonCipherConfig {
     pub main_gate_config: MainGateConfig,
 }
-
-// pub struct PoseidonEncParams<
-//     F: PrimeField + FromUniformBytes<64>,
-//     const T: usize,
-//     const RATE: usize,
-// > {
-//     pub R_F: usize,
-//     pub R_P: usize,
-//     pub cipherKey: PoseidonCipherKey<F>,
-//     pub cipherByteSize: usize,
-//     pub cipher: [F; CIPHER_SIZE],
-// }
 
 #[derive(Debug, Clone)]
 pub struct PoseidonEncChip<
@@ -80,7 +66,7 @@ impl<
         key1: &F,
     ) -> Result<Self, Error> {
         let main_gate = MainGate::<_>::new(main_gate_config.clone());
-        let state  = [
+        let state = [
             // Domain - Maximum plaintext length of the elements of Fq, as defined
             // F::from_u128(0x100000000 as u128),
             // F::from_u128(MESSAGE_CAPACITY_TEST as u128),
@@ -332,27 +318,6 @@ impl<
         Ok(()) // zeroknight
     }
 
-    pub fn hash(&mut self, ctx: &mut RegionCtx<'_, F>) -> Result<AssignedValue<F>, Error> {
-        // Get elements to be encrypted
-        let input_elements = self.absorbing.clone();
-        // Flush the input que
-        self.absorbing.clear();
-
-        let mut padding_offset = 0;
-        // Apply permutation to `RATE` sized chunks
-        for chunk in input_elements.chunks(RATE) {
-            padding_offset = RATE - chunk.len();
-            self.permutation(ctx, chunk.to_vec())?;
-        }
-
-        // If last chunking is full apply another permutation for collution resistance
-        if padding_offset == 0 {
-            self.permutation(ctx, vec![])?;
-        }
-
-        Ok(self.state.0[1].clone())
-    }
-
     pub fn absorb_and_relese(
         &mut self,
         ctx: &mut RegionCtx<'_, F>,
@@ -399,7 +364,7 @@ pub(crate) struct PoseidonCipherCircuit<
     pub num_input: usize,       // zeroknight - ??
     pub message: Value<Vec<F>>, // message to be encrypted
     pub key: PoseidonCipherKey<F>,
-    pub expected: Vec<F>,       // expected cipher text
+    pub expected: Vec<F>, // expected cipher text
 }
 
 impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Circuit<F>
@@ -447,7 +412,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                         &self.spec,
                         &config.main_gate_config,
                         &self.key.key0,
-                        &self.key.key1
+                        &self.key.key1,
                     )?;
 
                 // check the assigned initial state
@@ -492,21 +457,18 @@ fn test_pos_enc() {
         let mut ref_pos_enc = PoseidonCipher::<F, FULL_ROUND, PARTIAL_ROUND, T, RATE>::new();
 
         let spec = Spec::<F, T, RATE>::new(8, 57);
-        let inputs = (0..(MESSAGE_CAPACITY))
-            .map(|_| F::ZERO)
-            .collect::<Vec<F>>();
+        let inputs = (0..(MESSAGE_CAPACITY)).map(|_| F::ZERO).collect::<Vec<F>>();
 
         //== Poseidon Encryption ==//
 
         let ref_cipher = ref_pos_enc.encrypt(&inputs, &F::ONE);
-
 
         let key = PoseidonCipherKey::<F> {
             key0: F::random(OsRng),
             key1: F::random(OsRng),
         };
         //== Circuit ==//
-        
+
         let circuit = PoseidonCipherCircuit::<F, T, RATE> {
             spec: spec.clone(),
             num_input: MESSAGE_CAPACITY,

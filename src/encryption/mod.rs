@@ -1,2 +1,2 @@
-pub mod poseidon_enc;
 pub mod chip;
+pub mod poseidon_enc;
