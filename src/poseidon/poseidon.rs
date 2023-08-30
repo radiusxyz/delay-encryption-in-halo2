@@ -1,5 +1,6 @@
 use crate::poseidon::spec::{Spec, State};
 use halo2curves::group::ff::{FromUniformBytes, PrimeField};
+use maingate::AssignedValue;
 
 /// output when desired
 #[derive(Debug, Clone)]
@@ -29,8 +30,7 @@ impl<F: FromUniformBytes<64>, const T: usize, const RATE: usize> Poseidon<F, T, 
         }
     }
 
-    /// Appends elements to the absorption line updates state while `RATE` is
-    /// full
+    /// perm_with_input
     pub fn perm_with_input(&mut self, elements: &[F]) {
         let mut input_elements = self.absorbing.clone();
         input_elements.extend_from_slice(elements);

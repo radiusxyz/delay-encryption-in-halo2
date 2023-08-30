@@ -5,12 +5,13 @@ use halo2wrong::curves::bn256;
 use poseidon::{Poseidon, Spec};
 use rand_core::OsRng;
 
-use crate::poseidon;
+use crate::poseidon::{
+    self,
+    chip::{FULL_ROUND, PARTIAL_ROUND},
+};
 
 pub const MESSAGE_CAPACITY: usize = 2;
 pub const CIPHER_SIZE: usize = MESSAGE_CAPACITY + 1;
-pub(crate) const FULL_ROUND: usize = 8;
-pub(crate) const PARTIAL_ROUND: usize = 57;
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct PoseidonCipherKey<F: PrimeField> {

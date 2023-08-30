@@ -1,40 +1,35 @@
+use ff::FromUniformBytes;
 use maingate::{AssignedValue, MainGate, MainGateConfig, MainGateInstructions, RegionCtx, Term};
 //use halo2::{halo2curves::ff::PrimeField, plonk::Error};
 use halo2::halo2curves::ff::PrimeField;
 use halo2wrong::halo2::plonk::Error;
-use poseidon::{SparseMDSMatrix, Spec, State};
+// use poseidon::{SparseMDSMatrix, Spec, State};
 
-use crate::poseidon;
+// use crate::poseidon;
+use crate::{poseidon::chip::AssignedState, poseidon::*};
 
-/// `AssignedState` is composed of `T` sized assigned values
-#[derive(Debug, Clone)]
-//pub struct AssignedState<F: PrimeField, const T: usize>(pub(super) [AssignedValue<F>; T]);
-pub struct AssignedState<F: PrimeField, const T: usize>(pub [AssignedValue<F>; T]); // zeroknight : make
-
-/// `HasherChip` is basically responsible for contraining permutation part of
-/// transcript pipeline
 #[derive(Debug, Clone)]
 pub struct HasherChip<
-    F: PrimeField,
-    const NUMBER_OF_LIMBS: usize,
-    const BIT_LEN: usize,
+    F: PrimeField + FromUniformBytes<64>,
+    // const NUMBER_OF_LIMBS: usize,
+    // const BIT_LEN: usize,
     const T: usize,
     const RATE: usize,
+    const R_F: usize,
+    const R_P: usize,
 > {
-    pub state: AssignedState<F, T>,
-    pub absorbing: Vec<AssignedValue<F>>,
-    spec: Spec<F, T, RATE>,
-
-    main_gate_config: MainGateConfig,
+    pos_chip: PoseidonChip<F, T, RATE, R_F, R_P>,
 }
 
 impl<
-        F: PrimeField,
-        const NUMBER_OF_LIMBS: usize,
-        const BIT_LEN: usize,
+        F: PrimeField + FromUniformBytes<64>,
+        // const NUMBER_OF_LIMBS: usize,
+        // const BIT_LEN: usize,
         const T: usize,
         const RATE: usize,
-    > HasherChip<F, NUMBER_OF_LIMBS, BIT_LEN, T, RATE>
+        const R_F: usize,
+        const R_P: usize,
+    > HasherChip<F, T, RATE, R_F, R_P>
 {
     // Constructs new hasher chip with assigned initial state
     pub fn new(
@@ -43,284 +38,185 @@ impl<
         spec: &Spec<F, T, RATE>,
         main_gate_config: &MainGateConfig,
     ) -> Result<Self, Error> {
-        let main_gate = MainGate::<_>::new(main_gate_config.clone());
-
-        let initial_state = State::<_, T>::default()
-            .words()
-            .iter()
-            .map(|word| main_gate.assign_constant(ctx, *word))
-            //.map(|e| main_gate.assign_constant(ctx, F::ZERO.mul(e)))
-            .collect::<Result<Vec<AssignedValue<F>>, Error>>()?;
+        let pos_hash_chip =
+            PoseidonChip::<F, T, RATE, R_F, R_P>::new_hash(ctx, spec, main_gate_config)?;
 
         Ok(Self {
-            state: AssignedState(initial_state.try_into().unwrap()),
-            spec: spec.clone(),
-            absorbing: vec![],
-            main_gate_config: main_gate_config.clone(),
+            pos_chip: pos_hash_chip,
         })
     }
 
     /// Appends field elements to the absorbation line. It won't perform
     /// permutation here
     pub fn update(&mut self, elements: &[AssignedValue<F>]) {
-        self.absorbing.extend_from_slice(elements);
+        self.pos_chip.absorbing.extend_from_slice(elements);
     }
 }
 
+// wooju - TODO: making as instruction? a form of trait impl
+//               and HashChip
 impl<
-        F: PrimeField,
-        const NUMBER_OF_LIMBS: usize,
-        const BIT_LEN: usize,
+        F: PrimeField + FromUniformBytes<64>,
+        const R_F: usize,
+        const R_P: usize,
         const T: usize,
         const RATE: usize,
-    > HasherChip<F, NUMBER_OF_LIMBS, BIT_LEN, T, RATE>
+    > HasherChip<F, T, RATE, R_F, R_P>
 {
-    /// Construct main gate
-    pub fn main_gate(&self) -> MainGate<F> {
-        MainGate::<_>::new(self.main_gate_config.clone())
-    }
-
-    /*
-        Internally expose poseidion parameters and matrices
-    */
-
-    pub(super) fn r_f_half(&self) -> usize {
-        self.spec.r_f() / 2
-    }
-
-    pub(super) fn constants_start(&self) -> Vec<[F; T]> {
-        self.spec.constants().start().clone()
-    }
-
-    pub(super) fn constants_partial(&self) -> Vec<F> {
-        self.spec.constants().partial().clone()
-    }
-
-    pub(super) fn constants_end(&self) -> Vec<[F; T]> {
-        self.spec.constants().end().clone()
-    }
-
-    pub(super) fn mds(&self) -> [[F; T]; T] {
-        self.spec.mds_matrices().mds().rows()
-    }
-
-    pub(super) fn pre_sparse_mds(&self) -> [[F; T]; T] {
-        self.spec.mds_matrices().pre_sparse_mds().rows()
-    }
-
-    pub(super) fn sparse_matrices(&self) -> Vec<SparseMDSMatrix<F, T, RATE>> {
-        self.spec.mds_matrices().sparse_matrices().clone()
-    }
-}
-
-impl<
-        F: PrimeField,
-        const NUMBER_OF_LIMBS: usize,
-        const BIT_LEN: usize,
-        const T: usize,
-        const RATE: usize,
-    > HasherChip<F, NUMBER_OF_LIMBS, BIT_LEN, T, RATE>
-{
-    /// Applies full state sbox then adds constants to each word in the state
-    fn sbox_full(&mut self, ctx: &mut RegionCtx<'_, F>, constants: &[F; T]) -> Result<(), Error> {
-        let main_gate = self.main_gate();
-        for (word, constant) in self.state.0.iter_mut().zip(constants.iter()) {
-            let t = main_gate.mul(ctx, word, word)?;
-            let t = main_gate.mul(ctx, &t, &t)?;
-            *word = main_gate.mul_add_constant(ctx, &t, word, *constant)?;
-        }
-        Ok(())
-    }
-
-    /// Applies sbox to the first word then adds constants to each word in the
-    /// state
-    fn sbox_part(&mut self, ctx: &mut RegionCtx<'_, F>, constant: F) -> Result<(), Error> {
-        let main_gate = self.main_gate();
-        let word = &mut self.state.0[0];
-        let t = main_gate.mul(ctx, word, word)?;
-        let t = main_gate.mul(ctx, &t, &t)?;
-        *word = main_gate.mul_add_constant(ctx, &t, word, constant)?;
-
-        Ok(())
-    }
-
-    // Adds pre constants and chunked inputs to the state.
-    fn absorb_with_pre_constants(
-        &mut self,
-        ctx: &mut RegionCtx<'_, F>,
-        //
-        // * inputs size equals to RATE: absorbing
-        // * inputs size is less then RATE but not 0: padding
-        // * inputs size is 0: extra permutation to avoid collution
-        inputs: Vec<AssignedValue<F>>,
-        pre_constants: &[F; T],
-    ) -> Result<(), Error> {
-        assert!(inputs.len() < T);
-        let offset = inputs.len() + 1;
-        let main_gate = self.main_gate();
-
-        // Add the first constant to the first word
-        self.state.0[0] = self
-            .main_gate()
-            .add_constant(ctx, &self.state.0[0], pre_constants[0])?;
-
-        // Add inputs along with constants
-        for ((word, constant), input) in self
-            .state
-            .0
-            .iter_mut()
-            .skip(1)
-            .zip(pre_constants.iter().skip(1))
-            .zip(inputs.iter())
-        {
-            *word = main_gate.add_with_constant(ctx, word, input, *constant)?;
-        }
-
-        // Padding
-        for (i, (word, constant)) in self
-            .state
-            .0
-            .iter_mut()
-            .skip(offset)
-            .zip(pre_constants.iter().skip(offset))
-            .enumerate()
-        {
-            *word = main_gate.add_constant(
-                ctx,
-                word,
-                if i == 0 {
-                    // Mark
-                    *constant + F::ONE
-                } else {
-                    *constant
-                },
-            )?;
-        }
-
-        Ok(())
-    }
-
-    /// Applies MDS State multiplication
-    fn apply_mds(&mut self, ctx: &mut RegionCtx<'_, F>, mds: &[[F; T]; T]) -> Result<(), Error> {
-        // Calculate new state
-        let new_state = mds
-            .iter()
-            .map(|row| {
-                // term_i = s_0 * e_i_0 + s_1 * e_i_1 + ....
-                let terms = self
-                    .state
-                    .0
-                    .iter()
-                    .zip(row.iter())
-                    .map(|(e, word)| Term::Assigned(e, *word))
-                    .collect::<Vec<Term<F>>>();
-
-                self.main_gate().compose(ctx, &terms[..], F::ZERO)
-            })
-            .collect::<Result<Vec<AssignedValue<F>>, Error>>()?;
-
-        // Assign new state
-        for (word, new_word) in self.state.0.iter_mut().zip(new_state.into_iter()) {
-            *word = new_word
-        }
-
-        Ok(())
-    }
-
-    /// Applies sparse MDS to the state
-    fn apply_sparse_mds(
-        &mut self,
-        ctx: &mut RegionCtx<'_, F>,
-        mds: &SparseMDSMatrix<F, T, RATE>,
-    ) -> Result<(), Error> {
-        // For the 0th word
-        let terms = self
-            .state
-            .0
-            .iter()
-            .zip(mds.row().iter())
-            .map(|(e, word)| Term::Assigned(e, *word))
-            .collect::<Vec<Term<F>>>();
-        let mut new_state = vec![self.main_gate().compose(ctx, &terms[..], F::ZERO)?];
-
-        // Rest of the trainsition ie the sparse part
-        for (e, word) in mds.col_hat().iter().zip(self.state.0.iter().skip(1)) {
-            new_state.push(self.main_gate().compose(
-                ctx,
-                &[
-                    Term::Assigned(&self.state.0[0], *e),
-                    Term::Assigned(word, F::ONE),
-                ],
-                F::ZERO,
-            )?);
-        }
-
-        // Assign new state
-        for (word, new_word) in self.state.0.iter_mut().zip(new_state.into_iter()) {
-            *word = new_word
-        }
-
-        Ok(())
-    }
-
-    /// Constrains poseidon permutation while mutating the given state
-    pub fn permutation(
-        &mut self,
-        ctx: &mut RegionCtx<'_, F>,
-        inputs: Vec<AssignedValue<F>>,
-    ) -> Result<(), Error> {
-        let r_f = self.r_f_half();
-        let mds = self.mds();
-        let pre_sparse_mds = self.pre_sparse_mds();
-        let sparse_matrices = self.sparse_matrices();
-
-        // First half of the full rounds
-        let constants = self.constants_start();
-        self.absorb_with_pre_constants(ctx, inputs, &constants[0])?;
-        for constants in constants.iter().skip(1).take(r_f - 1) {
-            self.sbox_full(ctx, constants)?;
-            self.apply_mds(ctx, &mds)?;
-        }
-        self.sbox_full(ctx, constants.last().unwrap())?;
-        self.apply_mds(ctx, &pre_sparse_mds)?;
-
-        // Partial rounds
-        let constants = self.constants_partial();
-        for (constant, sparse_mds) in constants.iter().zip(sparse_matrices.iter()) {
-            self.sbox_part(ctx, *constant)?;
-            self.apply_sparse_mds(ctx, sparse_mds)?;
-        }
-
-        // Second half of the full rounds
-        let constants = self.constants_end();
-        for constants in constants.iter() {
-            self.sbox_full(ctx, constants)?;
-            self.apply_mds(ctx, &mds)?;
-        }
-        self.sbox_full(ctx, &[F::ZERO; T])?;
-        self.apply_mds(ctx, &mds)?;
-
-        Ok(()) // zeroknight
-    }
-
     pub fn hash(&mut self, ctx: &mut RegionCtx<'_, F>) -> Result<AssignedValue<F>, Error> {
         // Get elements to be hashed
-        let input_elements = self.absorbing.clone();
+        let input_elements = self.pos_chip.absorbing.clone();
         // Flush the input que
-        self.absorbing.clear();
+        self.pos_chip.absorbing.clear();
 
         let mut padding_offset = 0;
         // Apply permutation to `RATE`Ï sized chunks
         for chunk in input_elements.chunks(RATE) {
             padding_offset = RATE - chunk.len();
-            self.permutation(ctx, chunk.to_vec())?;
+            self.pos_chip.perm_hash(ctx, chunk.to_vec())?;
         }
 
         // If last chunking is full apply another permutation for collution resistance
         if padding_offset == 0 {
-            self.permutation(ctx, vec![])?;
+            self.pos_chip.perm_hash(ctx, vec![])?;
         }
 
-        Ok(self.state.0[1].clone())
+        Ok(self.pos_chip.state.0[1].clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ff::FromUniformBytes;
+    use halo2::halo2curves::ff::{Field, PrimeField};
+    use halo2wrong::halo2::circuit::{Layouter, SimpleFloorPlanner, Value};
+    use halo2wrong::halo2::plonk::Error;
+    use crate::poseidon::chip::{FULL_ROUND, PARTIAL_ROUND};
+    use crate::{poseidon, PoseidonChip};
+    use halo2wrong::halo2::plonk::{Circuit, ConstraintSystem};
+    use maingate::mock_prover_verify;
+    use maingate::{MainGateInstructions, MainGateConfig, MainGate, RegionCtx};
+    use poseidon::Poseidon;
+    use poseidon::Spec;
+    use rand_core::OsRng;
+
+    use super::HasherChip;
+
+    const NUMBER_OF_LIMBS: usize = 4;
+    const BIT_LEN_LIMB: usize = 68;
+
+    #[derive(Clone)]
+    pub(crate) struct PoseidonHashConfig {
+        main_gate_config: MainGateConfig,
+    }
+
+    pub(crate) struct PoseidonHashCircuit<
+        F: PrimeField + FromUniformBytes<64>,
+        const T: usize,
+        const RATE: usize,
+    > {
+        spec: Spec<F, T, RATE>,
+        n: usize,
+        inputs: Value<Vec<F>>,
+        expected: Value<F>,
+    }
+
+    impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Circuit<F>
+        for PoseidonHashCircuit<F, T, RATE>
+    {
+        type Config = PoseidonHashConfig;
+        type FloorPlanner = SimpleFloorPlanner;
+        #[cfg(feature = "circuit-params")]
+        type Params = ();
+
+        fn without_witnesses(&self) -> Self {
+            unimplemented!();
+        }
+
+        fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let main_gate_config = MainGate::<F>::configure(meta);
+
+            PoseidonHashConfig { main_gate_config }
+        }
+
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<F>,
+        ) -> Result<(), Error> {
+            let main_gate = MainGate::<F>::new(config.main_gate_config.clone());
+
+            // compare results
+            layouter.assign_region(
+                || "region 0",
+                |region| {
+                    let offset = 0;
+                    let ctx = &mut RegionCtx::new(region, offset);
+
+                    let expected_result = main_gate.assign_value(ctx, self.expected)?;
+
+                    let mut pos_hash_chip =
+                        HasherChip::<F, T, RATE, FULL_ROUND, PARTIAL_ROUND>::new(
+                            ctx,
+                            &self.spec,
+                            &config.main_gate_config,
+                        )?;
+
+                    println!("state0: {:?}\n", pos_hash_chip.pos_chip.state.0);
+
+                    for e in self.inputs.as_ref().transpose_vec(self.n) {
+                        let e = main_gate.assign_value(ctx, e.map(|e| *e))?;
+                        println!("{:?}", e);
+                        pos_hash_chip.update(&[e.clone()]);
+                    }
+
+                    println!("state1: {:?}\n", pos_hash_chip.pos_chip.state.0);
+
+                    let hash_output = pos_hash_chip.hash(ctx)?;
+                    // let expected = main_gate.assign_value(ctx, self.expected)?;
+
+                    println!("state2: {:?}\n", pos_hash_chip.pos_chip.state.0);
+
+                    println!("hash_output: {:?}", hash_output);
+                    println!("expected hash_output: {:?}\n", self.expected);
+                    main_gate.assert_equal(ctx, &hash_output, &expected_result)?;
+
+                    Ok(())
+                },
+            )?;
+
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_example_hash() {
+        use halo2wrong::curves::bn256::Fr;
+        let number_of_inputs = 4;
+
+        println!("{:?}", number_of_inputs);
+        let mut ref_hasher = Poseidon::<Fr, 5, 4>::new_hash(8, 57);
+        let spec = Spec::<Fr, 5, 4>::new(8, 57);
+
+        let inputs: Vec<Fr> = (0..number_of_inputs)
+            // .map(|_| Fr::random(OsRng))
+            .map(|_| Fr::ZERO)
+            .collect::<Vec<Fr>>();
+
+        println!("ref_hahser state0: {:?}", ref_hasher.state.words().clone());
+
+        ref_hasher.perm_with_input(&inputs[..]);
+        let expected = ref_hasher.perm_remain(1);
+
+        println!("ref_hahser state1: {:?}", ref_hasher.state.words().clone());
+
+        let circuit: PoseidonHashCircuit<Fr, 5, 4> = PoseidonHashCircuit {
+            spec: spec.clone(),
+            n: number_of_inputs,
+            inputs: Value::known(inputs),
+            expected: Value::known(expected),
+        };
+        let instance = vec![vec![]];
+        mock_prover_verify(&circuit, instance);
     }
 }

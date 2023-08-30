@@ -3,13 +3,14 @@ pub use big_integer::*;
 
 pub mod hash;
 pub use hash::*;
+use poseidon::chip::{FULL_ROUND, PARTIAL_ROUND};
 
 pub mod rsa;
 use crate::encryption::poseidon_enc::PoseidonCipher;
 pub use crate::rsa::*;
 use encryption::{
     chip::*,
-    poseidon_enc::{PoseidonCipherKey, CIPHER_SIZE, FULL_ROUND, MESSAGE_CAPACITY, PARTIAL_ROUND},
+    poseidon_enc::{PoseidonCipherKey, CIPHER_SIZE, MESSAGE_CAPACITY},
 };
 use rand_core::OsRng;
 
@@ -44,7 +45,6 @@ const BIT_LEN_LIMB: usize = 68;
 struct DelayEncCircuitConfig {
     // RSA
     rsa_config: RSAConfig,
-
     // Poseidon Encryption
     poseidon_config: PoseidonCipherConfig,
 }
@@ -86,7 +86,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize>
     const BITS_LEN: usize = 2048;
     const LIMB_WIDTH: usize = RSAChip::<F>::LIMB_WIDTH; // 64
     const EXP_LIMB_BITS: usize = 5;
-    const DEFAULT_E: u128 = 65537;
+    // const DEFAULT_E: u128 = 65537;
 
     fn rsa_chip(&self, config: RSAConfig) -> RSAChip<F> {
         RSAChip::new(config, Self::BITS_LEN, Self::EXP_LIMB_BITS)
@@ -109,7 +109,6 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
             RSAChip::<F>::compute_range_lens(Self::BITS_LEN / Self::LIMB_WIDTH);
 
         let range_config = RangeChip::<F>::configure(
-            // meta, main_gate_config, composition_bit_lens, overflow_bit_lens)
             meta,
             &main_gate_config,
             composition_bit_lens,
@@ -131,15 +130,15 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
         config: Self::Config,
         mut layouter: impl halo2wrong::halo2::circuit::Layouter<F>,
     ) -> Result<(), halo2wrong::halo2::plonk::Error> {
-        // poseidoncipherchip = new();
-        // enc_key = pcc.calucation_key();
-        // pcc.encrypt_message (enc_key);
-
         // === RSA based Time-lock === //
         let rsa_chip = self.rsa_chip(config.rsa_config.clone());
         let bigint_chip = rsa_chip.bigint_chip();
         let limb_width = Self::LIMB_WIDTH;
         let num_limbs = Self::BITS_LEN / Self::LIMB_WIDTH;
+
+        let range_chip = bigint_chip.range_chip();
+        range_chip.load_table(&mut layouter)?;
+        let main_gate = rsa_chip.main_gate();
 
         let rsa_output = layouter.assign_region(
             || "rsa modpow with 2048 bits",
@@ -174,23 +173,6 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
             },
         )?;
 
-        layouter.assign_region(
-            || "2048 bits mapping",
-            |region| {
-                let offset = 0;
-                let ctx = &mut RegionCtx::new(region, offset);
-
-                todo!()
-            },
-        )?;
-
-        let range_chip = bigint_chip.range_chip();
-        range_chip.load_table(&mut layouter)?;
-
-        let main_gate = rsa_chip.main_gate();
-
-
-        
         // let mut main_gate = config.poseidon_config.main_gate_config.clone(); //main_gate()
         layouter.assign_region(
             || "poseidon region",
@@ -256,7 +238,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
 }
 
 #[test]
-fn test_modpow_2048_circuit() {
+fn test_de_circuit() {
     use encryption::chip::PoseidonCipherCircuit;
     use halo2wrong::halo2::dev::MockProver;
     use rand::{thread_rng, Rng};
