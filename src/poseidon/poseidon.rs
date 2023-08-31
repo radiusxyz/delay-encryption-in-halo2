@@ -13,10 +13,10 @@ pub struct Poseidon<F: PrimeField, const T: usize, const RATE: usize> {
 
 impl<F: FromUniformBytes<64>, const T: usize, const RATE: usize> Poseidon<F, T, RATE> {
     /// Constructs a clear state poseidon instance
-    pub fn new_enc(r_f: usize, r_p: usize) -> Self {
+    pub fn new_enc(r_f: usize, r_p: usize, k0: F, k1: F) -> Self {
         Self {
             spec: Spec::new(r_f, r_p),
-            state: State::init_state([F::ZERO, F::ZERO, F::ZERO, F::ZERO, F::ONE]),
+            state: State::init_state([F::ZERO, F::ZERO, k0, k1, F::ONE]),
             // state: State::default(),
             absorbing: Vec::new(),
         }

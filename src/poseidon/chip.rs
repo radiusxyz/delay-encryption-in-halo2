@@ -15,21 +15,13 @@ use maingate::{
 use poseidon::{Poseidon, SparseMDSMatrix, Spec, State};
 use rand_core::OsRng;
 
-use crate::{
-    encryption::poseidon_enc::{PoseidonCipher, PoseidonCipherKey, CIPHER_SIZE, MESSAGE_CAPACITY},
-    poseidon,
-};
+use crate::poseidon;
 
 #[derive(Debug, Clone)]
 pub struct AssignedState<F: PrimeField, const T: usize>(pub [AssignedValue<F>; T]);
 
 pub(crate) const FULL_ROUND: usize = 8;
 pub(crate) const PARTIAL_ROUND: usize = 57;
-
-#[derive(Clone, Debug)]
-pub struct PoseidonCipherConfig {
-    pub main_gate_config: MainGateConfig,
-}
 
 /// poseidon chip constrains permutation operations
 #[derive(Debug, Clone)]
@@ -62,7 +54,7 @@ impl<
     }
 
     /// Construct PoseidonChip
-    pub fn new(
+    pub fn new_enc(
         ctx: &mut RegionCtx<'_, F>,
         spec: &Spec<F, T, RATE>,
         main_gate_config: &MainGateConfig,
@@ -72,16 +64,15 @@ impl<
         let main_gate = MainGate::<_>::new(main_gate_config.clone());
         let state = [
             // Domain - Maximum plaintext length of the elements of Fq, as defined
-            // F::from_u128(0x100000000 as u128),
+            // [F::from_u128(0x100000000 as u128),
             // F::from_u128(MESSAGE_CAPACITY_TEST as u128),
-            // *key0,
-            // *key1,
 
+            // nonce]
             // debuging purpose
             F::ZERO,
             F::ZERO,
-            F::ZERO,
-            F::ZERO,
+            *key0,
+            *key1,
             F::ONE,
         ];
         let initial_state = State::<F, T>::init_state(state)

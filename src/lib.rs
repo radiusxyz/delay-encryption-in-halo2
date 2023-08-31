@@ -6,11 +6,11 @@ pub use hash::*;
 use poseidon::chip::{FULL_ROUND, PARTIAL_ROUND};
 
 pub mod rsa;
-use crate::encryption::poseidon_enc::PoseidonCipher;
 pub use crate::rsa::*;
+use crate::{encryption::poseidon_enc::PoseidonCipher, hash::chip::HasherChip};
 use encryption::{
     chip::*,
-    poseidon_enc::{PoseidonCipherKey, CIPHER_SIZE, MESSAGE_CAPACITY},
+    poseidon_enc::{PoseidonEncKey, CIPHER_SIZE, MESSAGE_CAPACITY},
 };
 use rand_core::OsRng;
 
@@ -23,7 +23,7 @@ use num_bigint::{BigUint, RandomBits};
 
 use halo2wrong::{
     halo2::{
-        circuit::{Layouter, SimpleFloorPlanner},
+        circuit::{Layouter, SimpleFloorPlanner, Value},
         plonk::{Circuit, ConstraintSystem},
     },
     RegionCtx,
@@ -34,8 +34,8 @@ use maingate::{
     RangeConfig, RangeInstructions,
 };
 
-use ecc::halo2::circuit::Value;
-use ecc::{integer::rns::Rns, BaseFieldEccChip, EccConfig};
+// use halo2_proofs::circuit::value::Value;
+// use ecc::{integer::rns::Rns, BaseFieldEccChip, EccConfig};
 
 // Poseidon Constants
 const NUMBER_OF_LIMBS: usize = 4;
@@ -46,7 +46,7 @@ struct DelayEncCircuitConfig {
     // RSA
     rsa_config: RSAConfig,
     // Poseidon Encryption
-    poseidon_config: PoseidonCipherConfig,
+    poseidon_config: MainGateConfig,
 }
 
 #[derive(Debug, Clone)]
@@ -72,12 +72,13 @@ struct DelayEncryptCircuit<F: PrimeField + FromUniformBytes<64>, const T: usize,
     n: BigUint,
     e: BigUint,
     x: BigUint,
-    // Poseidon
+    //
+    // Poseidon Enc
     spec: Spec<F, T, RATE>, // Spec for Poseidon Encryption
     num_input: usize,       // zeroknight - ??
-    message: Value<Vec<F>>, // message to be encrypted
-    key: PoseidonCipherKey<F>,
-    expected: Vec<F>, // expected cipher text
+    message: Vec<F>,        // message to be encrypted
+    key: PoseidonEncKey<F>,
+    // expected: Vec<F>, // expected cipher text
 }
 
 impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize>
@@ -87,10 +88,6 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize>
     const LIMB_WIDTH: usize = RSAChip::<F>::LIMB_WIDTH; // 64
     const EXP_LIMB_BITS: usize = 5;
     // const DEFAULT_E: u128 = 65537;
-
-    fn rsa_chip(&self, config: RSAConfig) -> RSAChip<F> {
-        RSAChip::new(config, Self::BITS_LEN, Self::EXP_LIMB_BITS)
-    }
 }
 
 impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Circuit<F>
@@ -117,7 +114,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
 
         let bigint_config = BigIntConfig::new(range_config, main_gate_config.clone());
         let rsa_config = RSAConfig::new(bigint_config);
-        let poseidon_config = PoseidonCipherConfig { main_gate_config };
+        let poseidon_config = main_gate_config;
 
         DelayEncCircuitConfig {
             rsa_config,
@@ -131,7 +128,11 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
         mut layouter: impl halo2wrong::halo2::circuit::Layouter<F>,
     ) -> Result<(), halo2wrong::halo2::plonk::Error> {
         // === RSA based Time-lock === //
-        let rsa_chip = self.rsa_chip(config.rsa_config.clone());
+        let rsa_chip = RSAChip::new(
+            config.rsa_config.clone(),
+            Self::BITS_LEN,
+            Self::EXP_LIMB_BITS,
+        );
         let bigint_chip = rsa_chip.bigint_chip();
         let limb_width = Self::LIMB_WIDTH;
         let num_limbs = Self::BITS_LEN / Self::LIMB_WIDTH;
@@ -164,26 +165,74 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 // Given a base x, a RSA public key (e,n), performs the modular power x^e mod n.
                 let powed_var = rsa_chip.modpow_public_key(ctx, &x_assigned, &public_key_var)?;
 
-                let valid_powed_var = big_pow_mod(&self.x, &self.e, &self.n);
+                let valid_powed_var_biguint = big_pow_mod(&self.x, &self.e, &self.n);
 
-                let valid_powed_var = bigint_chip.assign_constant_fresh(ctx, valid_powed_var)?;
+                let valid_powed_var =
+                    bigint_chip.assign_constant_fresh(ctx, valid_powed_var_biguint.clone())?;
                 bigint_chip.assert_equal_fresh(ctx, &powed_var, &valid_powed_var)?;
+
+                println!("RSA RESULT: {:#6x}\n", valid_powed_var_biguint);
 
                 Ok(valid_powed_var)
             },
         )?;
 
-        // let mut main_gate = config.poseidon_config.main_gate_config.clone(); //main_gate()
+        // wooju - TODO: concatenation?
+
+        let (sk0, sk1, h_assiged) = layouter.assign_region(
+            || "hash mapping from 2048bit",
+            |region| {
+                let offset = 0;
+                let ctx = &mut RegionCtx::new(region, offset);
+
+                let mut hasher = HasherChip::<F, T, RATE, FULL_ROUND, PARTIAL_ROUND>::new(
+                    ctx,
+                    &self.spec,
+                    &config.poseidon_config,
+                )?;
+
+                for i in 0..rsa_output.num_limbs() {
+                    let e = main_gate.assign_value(ctx, rsa_output.limb(i).value().map(|e| *e))?;
+                    println!("{:?}", e);
+                    hasher.update(&[e.clone()]);
+                }
+
+                let h_assiged = hasher.hash(ctx)?;
+                // let expected = main_gate.assign_value(ctx, self.expected)?;
+                let h_value = h_assiged.value().map(|e| *e);
+
+                println!("hash_output: {:?}", h_value);
+
+                Ok((h_value.clone(), h_value, h_assiged))
+                // wooju - TODO: setting output to be 256 * 2
+            },
+        )?;
+
         layouter.assign_region(
             || "poseidon region",
             |region| {
                 let offset = 0;
                 let ctx = &mut RegionCtx::new(region, offset);
 
+                let mut pose_key = [F::ZERO; 2];
+
+                // set poseidon enc key as the ouput of rsa
+                sk0.map(|v| pose_key[0] = v);
+                sk1.map(|v| pose_key[1] = v);
+
+                let mut ref_enc =
+                    PoseidonCipher::<F, FULL_ROUND, PARTIAL_ROUND, T, RATE>::new(pose_key);
+
+                let encryption_result = ref_enc.encrypt(&self.message, &F::ONE);
+
+                println!("\nmessage: {:?}", self.message);
+
                 let mut expected_result = vec![];
 
+                // ref_enc.
+
                 // assign expected result
-                for result in &self.expected {
+                for result in &encryption_result {
                     let result = main_gate.assign_value(ctx, Value::known(result.clone()))?;
                     expected_result.push(result);
                 }
@@ -192,31 +241,37 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
 
                 // new assigns initial_state into cells.
 
-                let mut pos_enc_chip = PoseidonChip::<F, T, RATE, FULL_ROUND, PARTIAL_ROUND>::new(
+                let mut enc = PoseidonEncChip::<F, T, RATE, FULL_ROUND, PARTIAL_ROUND>::new(
                     ctx,
                     &self.spec,
-                    &config.poseidon_config.main_gate_config,
-                    &self.key.key0,
-                    &self.key.key1,
+                    &config.poseidon_config,
+                    pose_key,
                 )?;
 
+                let _ = main_gate.assert_equal(ctx, &h_assiged, &enc.pose_chip.state.0[2]);
+                let _ = main_gate.assert_equal(ctx, &h_assiged, &enc.pose_chip.state.0[3]);
+
                 // check the assigned initial state
-                println!("\nzk_state: {:?}", pos_enc_chip.state.0);
+                println!("\nzk_state: {:?}", enc.pose_chip.state.0);
+                println!("\nh_output: {:?}", h_assiged);
 
                 // permute before state message addtion
-                pos_enc_chip.permutation(ctx, vec![])?;
+                enc.pose_chip.permutation(ctx, vec![])?;
 
                 // check the permuted state
-                println!("zk_state2: {:?}\n", pos_enc_chip.state.0);
+                println!("\nzk_state2: {:?}", enc.pose_chip.state.0);
+
+                let message = Value::known(self.message.clone());
+                println!("\nassigned message: {:?}", message);
 
                 // set the message to be an input to the encryption
-                for e in self.message.as_ref().transpose_vec(self.num_input) {
+                for e in message.as_ref().transpose_vec(self.num_input) {
                     let e = main_gate.assign_value(ctx, e.map(|v| *v))?;
-                    pos_enc_chip.set_inputs(&[e.clone()]);
+                    enc.pose_chip.set_inputs(&[e.clone()]);
                 }
 
                 // add the input to the currentn state and output encrypted result
-                let cipher_text = pos_enc_chip.absorb_and_relese(ctx)?;
+                let cipher_text = enc.absorb_and_relese(ctx)?;
 
                 println!("cipher: {:?}", cipher_text);
                 println!("expected cipher: {:?}\n", expected_result);
@@ -239,7 +294,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
 
 #[test]
 fn test_de_circuit() {
-    use encryption::chip::PoseidonCipherCircuit;
+    use encryption::chip::PoseidonEncCircuit;
     use halo2wrong::halo2::dev::MockProver;
     use rand::{thread_rng, Rng};
 
@@ -256,28 +311,32 @@ fn test_de_circuit() {
         )) % &n;
         let x = rng.sample::<BigUint, _>(RandomBits::new(bits_len)) % &n;
 
-        //params for Poseidon
-        let mut ref_pos_enc = PoseidonCipher::<F, FULL_ROUND, PARTIAL_ROUND, T, RATE>::new();
+        let key = PoseidonEncKey::<F> {
+            key0: F::random(OsRng),
+            key1: F::random(OsRng),
+        };
+
+        // //params for Poseidon
+        // let mut ref_pos_enc = PoseidonCipher::<F, FULL_ROUND, PARTIAL_ROUND, T, RATE>::new();
 
         let spec = Spec::<F, T, RATE>::new(8, 57);
         let inputs = (0..(MESSAGE_CAPACITY)).map(|_| F::ZERO).collect::<Vec<F>>();
 
         //== Poseidon Encryption ==//
 
-        let ref_cipher = ref_pos_enc.encrypt(&inputs, &F::ONE);
+        // let ref_cipher = ref_pos_enc.encrypt(&inputs, &F::ONE);
 
-        let key = PoseidonCipherKey::<F> {
-            key0: F::random(OsRng),
-            key1: F::random(OsRng),
-        };
         //== Circuit ==//
 
-        let circuit = PoseidonCipherCircuit::<F, T, RATE> {
+        let circuit = DelayEncryptCircuit::<F, T, RATE> {
+            n: n,
+            e: e,
+            x: x,
             spec: spec.clone(),
             num_input: MESSAGE_CAPACITY,
-            message: Value::known(inputs),
+            message: inputs,
             key: key.clone(),
-            expected: ref_cipher.to_vec(),
+            // expected: ref_cipher.to_vec(),
         };
 
         let public_inputs = vec![vec![]];
@@ -294,7 +353,7 @@ fn test_de_circuit() {
 
     //run with different curves
     use halo2wrong::curves::bn256::Fr as BnFq;
-    use halo2wrong::curves::pasta::{Fp as PastaFp, Fq as PastaFq};
+    // use halo2wrong::curves::pasta::{Fp as PastaFp, Fq as PastaFq};
     run::<BnFq, 5, 4>();
     //run::<PastaFp, 5, 4>();
     //run::<PastaFq, 5, 4>();

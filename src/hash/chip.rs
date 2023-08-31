@@ -3,7 +3,6 @@ use maingate::{AssignedValue, MainGate, MainGateConfig, MainGateInstructions, Re
 //use halo2::{halo2curves::ff::PrimeField, plonk::Error};
 use halo2::halo2curves::ff::PrimeField;
 use halo2wrong::halo2::plonk::Error;
-// use poseidon::{SparseMDSMatrix, Spec, State};
 
 // use crate::poseidon;
 use crate::{poseidon::chip::AssignedState, poseidon::*};
@@ -18,7 +17,7 @@ pub struct HasherChip<
     const R_F: usize,
     const R_P: usize,
 > {
-    pos_chip: PoseidonChip<F, T, RATE, R_F, R_P>,
+    pub pose_chip: PoseidonChip<F, T, RATE, R_F, R_P>,
 }
 
 impl<
@@ -42,14 +41,14 @@ impl<
             PoseidonChip::<F, T, RATE, R_F, R_P>::new_hash(ctx, spec, main_gate_config)?;
 
         Ok(Self {
-            pos_chip: pos_hash_chip,
+            pose_chip: pos_hash_chip,
         })
     }
 
     /// Appends field elements to the absorbation line. It won't perform
     /// permutation here
     pub fn update(&mut self, elements: &[AssignedValue<F>]) {
-        self.pos_chip.absorbing.extend_from_slice(elements);
+        self.pose_chip.absorbing.extend_from_slice(elements);
     }
 }
 
@@ -65,45 +64,45 @@ impl<
 {
     pub fn hash(&mut self, ctx: &mut RegionCtx<'_, F>) -> Result<AssignedValue<F>, Error> {
         // Get elements to be hashed
-        let input_elements = self.pos_chip.absorbing.clone();
+        let input_elements = self.pose_chip.absorbing.clone();
         // Flush the input que
-        self.pos_chip.absorbing.clear();
+        self.pose_chip.absorbing.clear();
 
         let mut padding_offset = 0;
         // Apply permutation to `RATE`Ï sized chunks
         for chunk in input_elements.chunks(RATE) {
             padding_offset = RATE - chunk.len();
-            self.pos_chip.perm_hash(ctx, chunk.to_vec())?;
+            self.pose_chip.perm_hash(ctx, chunk.to_vec())?;
         }
 
         // If last chunking is full apply another permutation for collution resistance
         if padding_offset == 0 {
-            self.pos_chip.perm_hash(ctx, vec![])?;
+            self.pose_chip.perm_hash(ctx, vec![])?;
         }
 
-        Ok(self.pos_chip.state.0[1].clone())
+        Ok(self.pose_chip.state.0[1].clone())
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::poseidon::chip::{FULL_ROUND, PARTIAL_ROUND};
+    use crate::{poseidon, PoseidonChip};
     use ff::FromUniformBytes;
     use halo2::halo2curves::ff::{Field, PrimeField};
     use halo2wrong::halo2::circuit::{Layouter, SimpleFloorPlanner, Value};
     use halo2wrong::halo2::plonk::Error;
-    use crate::poseidon::chip::{FULL_ROUND, PARTIAL_ROUND};
-    use crate::{poseidon, PoseidonChip};
     use halo2wrong::halo2::plonk::{Circuit, ConstraintSystem};
     use maingate::mock_prover_verify;
-    use maingate::{MainGateInstructions, MainGateConfig, MainGate, RegionCtx};
+    use maingate::{MainGate, MainGateConfig, MainGateInstructions, RegionCtx};
     use poseidon::Poseidon;
     use poseidon::Spec;
     use rand_core::OsRng;
 
     use super::HasherChip;
 
-    const NUMBER_OF_LIMBS: usize = 4;
-    const BIT_LEN_LIMB: usize = 68;
+    // const NUMBER_OF_LIMBS: usize = 4;
+    // const BIT_LEN_LIMB: usize = 68;
 
     #[derive(Clone)]
     pub(crate) struct PoseidonHashConfig {
@@ -162,7 +161,7 @@ mod tests {
                             &config.main_gate_config,
                         )?;
 
-                    println!("state0: {:?}\n", pos_hash_chip.pos_chip.state.0);
+                    println!("state0: {:?}\n", pos_hash_chip.pose_chip.state.0);
 
                     for e in self.inputs.as_ref().transpose_vec(self.n) {
                         let e = main_gate.assign_value(ctx, e.map(|e| *e))?;
@@ -170,12 +169,12 @@ mod tests {
                         pos_hash_chip.update(&[e.clone()]);
                     }
 
-                    println!("state1: {:?}\n", pos_hash_chip.pos_chip.state.0);
+                    println!("state1: {:?}\n", pos_hash_chip.pose_chip.state.0);
 
                     let hash_output = pos_hash_chip.hash(ctx)?;
                     // let expected = main_gate.assign_value(ctx, self.expected)?;
 
-                    println!("state2: {:?}\n", pos_hash_chip.pos_chip.state.0);
+                    println!("state2: {:?}\n", pos_hash_chip.pose_chip.state.0);
 
                     println!("hash_output: {:?}", hash_output);
                     println!("expected hash_output: {:?}\n", self.expected);

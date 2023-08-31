@@ -1,1 +1,1 @@
-pub mod hasher;
+pub mod chip;
