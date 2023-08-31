@@ -279,9 +279,9 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
 
                 // constrain with encryption result
                 println!("check out equality..");
-                let _ = main_gate.assert_equal(ctx, &cipher_text[0], &expected_result[0])?;
-                let _ = main_gate.assert_equal(ctx, &cipher_text[1], &expected_result[1])?;
-                let _ = main_gate.assert_equal(ctx, &cipher_text[2], &expected_result[2])?;
+                for i in 0..cipher_text.len() {
+                    main_gate.assert_equal(ctx, &cipher_text[i], &expected_result[i])?;
+                }
                 Ok(())
             },
         )?;

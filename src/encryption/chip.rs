@@ -82,11 +82,15 @@ impl<
 
         // Flush the input que
         self.pose_chip.absorbing.clear();
+
+        let mut i = 0;
+
         // Apply permutation to `RATE` sized chunks
         for inputs in input_elements.chunks(RATE) {
             // let pre_constants = &[F::ZERO;T];
+            println!("chunklen{:?}", inputs.len());
 
-            let mut i = 0;
+            
 
             // Add inputs along with constants
             for (word, input) in self.pose_chip.state.0.iter_mut().skip(1).zip(inputs.iter()) {
@@ -97,9 +101,13 @@ impl<
                 }
             }
 
+            println!("i counter{:?}", i);
+
             self.pose_chip.permutation(ctx, inputs.to_vec())?;
-            cipher_text.push(self.pose_chip.state.0[1].clone());
+            
         }
+
+        cipher_text.push(self.pose_chip.state.0[1].clone());
 
         Ok(cipher_text)
     }
@@ -181,15 +189,15 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 // add the input to the currentn state and output encrypted result
                 let cipher_text = pos_enc_chip.absorb_and_relese(ctx)?;
 
-                // println!("cipher: {:?}", cipher_text);
-                // println!("expected cipher: {:?}\n", expected_result);
-                // println!("cipher len: {:?}", cipher_text.len());
+                println!("cipher: {:?}", cipher_text);
+                println!("expected cipher: {:?}\n", expected_result);
+                println!("cipher len: {:?}", cipher_text.len());
 
                 // constrain with encryption result
                 // println!("check out equality..");
-                let _ = main_gate.assert_equal(ctx, &cipher_text[0], &expected_result[0])?;
-                let _ = main_gate.assert_equal(ctx, &cipher_text[1], &expected_result[1])?;
-                let _ = main_gate.assert_equal(ctx, &cipher_text[2], &expected_result[2])?;
+                for i in 0..cipher_text.len() {
+                    main_gate.assert_equal(ctx, &cipher_text[i], &expected_result[i])?;
+                }
                 Ok(())
             },
         )?;

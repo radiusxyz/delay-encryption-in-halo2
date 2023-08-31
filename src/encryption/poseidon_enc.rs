@@ -10,7 +10,7 @@ use crate::poseidon::{
     chip::{FULL_ROUND, PARTIAL_ROUND},
 };
 
-pub const MESSAGE_CAPACITY: usize = 2;
+pub const MESSAGE_CAPACITY: usize = 31;
 pub const CIPHER_SIZE: usize = MESSAGE_CAPACITY + 1;
 
 #[derive(Copy, Clone, Debug, Default)]
@@ -47,7 +47,6 @@ pub struct PoseidonCipher<
     pub cipherKey: [F; 2],
     pub cipherByteSize: usize,
     pub cipher: [F; CIPHER_SIZE],
-    // _spec: PhantomData<F>,
 }
 
 impl<F, const r_f: usize, const r_p: usize, const T: usize, const RATE: usize>
@@ -105,21 +104,25 @@ where
 
         // println!("ref_hahser state2: {:?}", encrypter.state.words().clone());
 
-        let mut state_2 = encrypter.state.words().clone();
+        let mut i = 0;
 
-        (0..MESSAGE_CAPACITY).for_each(|i| {
-            state_2[i + 1] += if i < message.len() {
-                message[i]
-            } else {
-                F::ZERO
-            };
-            cipher[i] = state_2[i + 1];
-        });
-        encrypter.perm_with_input(&message);
-        encrypter.perm_remain(0);
-
-        let state_3 = encrypter.state.words().clone();
-        cipher[MESSAGE_CAPACITY] = state_3[1];
+        for inputs in message.chunks(RATE) {
+            
+            for (word, input) in encrypter.state.words().iter_mut().skip(1).zip(inputs.iter()) {
+                
+                *word = word.add(input);
+                if i < MESSAGE_CAPACITY {
+                    cipher[i] = word.clone();
+                    i += 1;
+                }
+            }
+            if inputs.len() == RATE {
+            encrypter.perm_with_input(&inputs);}
+            else {encrypter.perm_remain(0);}
+        }
+        // encrypter.perm_with_input(&[]);
+        
+        cipher[MESSAGE_CAPACITY] = encrypter.state.words()[1].clone();
 
         self.cipher = cipher;
 
@@ -142,8 +145,8 @@ where
         let mut state_2 = encrypter.state.words().clone();
 
         (0..MESSAGE_CAPACITY).for_each(|i| {
-            message[i] = self.cipher[i] - state_2[i + 1];
-            state_2[i + 1] = self.cipher[i];
+            message[i] = self.cipher[i] - state_2[(i + 1)%T];
+            state_2[(i + 1)%T] = self.cipher[i];
         });
 
         encrypter.perm_with_input(&mut message);
