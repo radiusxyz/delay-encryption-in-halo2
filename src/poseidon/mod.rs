@@ -3,8 +3,8 @@
 
 #![deny(missing_debug_implementations)]
 #![deny(missing_docs)]
-
-pub(crate) mod chip;
+///
+pub mod chip;
 mod grain;
 mod matrix;
 mod permutation;

@@ -17,11 +17,13 @@ use rand_core::OsRng;
 
 use crate::poseidon;
 
+///
 #[derive(Debug, Clone)]
 pub struct AssignedState<F: PrimeField, const T: usize>(pub [AssignedValue<F>; T]);
-
-pub(crate) const FULL_ROUND: usize = 8;
-pub(crate) const PARTIAL_ROUND: usize = 57;
+/// number of full round
+pub const FULL_ROUND: usize = 8;
+/// number of partial round
+pub const PARTIAL_ROUND: usize = 57;
 
 /// poseidon chip constrains permutation operations
 #[derive(Debug, Clone)]

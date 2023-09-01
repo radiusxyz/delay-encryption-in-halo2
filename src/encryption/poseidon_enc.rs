@@ -10,7 +10,7 @@ use crate::poseidon::{
     chip::{FULL_ROUND, PARTIAL_ROUND},
 };
 
-pub const MESSAGE_CAPACITY: usize = 31;
+pub const MESSAGE_CAPACITY: usize = 2; //max 31
 pub const CIPHER_SIZE: usize = MESSAGE_CAPACITY + 1;
 
 #[derive(Copy, Clone, Debug, Default)]

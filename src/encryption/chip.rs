@@ -88,7 +88,7 @@ impl<
         // Apply permutation to `RATE` sized chunks
         for inputs in input_elements.chunks(RATE) {
             // let pre_constants = &[F::ZERO;T];
-            println!("chunklen{:?}", inputs.len());
+            // println!("chunklen{:?}", inputs.len());
 
             
 
@@ -101,7 +101,7 @@ impl<
                 }
             }
 
-            println!("i counter{:?}", i);
+            // println!("i counter{:?}", i);
 
             self.pose_chip.permutation(ctx, inputs.to_vec())?;
             
@@ -242,3 +242,6 @@ fn test_pos_enc() {
 
     run::<BnFr, 5, 4>();
 }
+
+
+
