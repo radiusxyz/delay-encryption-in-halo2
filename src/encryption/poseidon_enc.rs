@@ -1,9 +1,6 @@
-use std::{default, marker::PhantomData};
-
 use ff::{Field, FromUniformBytes, PrimeField};
 use halo2wrong::curves::bn256;
-use poseidon::{Poseidon, Spec};
-use rand_core::OsRng;
+use poseidon::Poseidon;
 
 use crate::poseidon::{
     self,

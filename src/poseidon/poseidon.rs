@@ -1,6 +1,5 @@
 use crate::poseidon::spec::{Spec, State};
 use halo2curves::group::ff::{FromUniformBytes, PrimeField};
-use maingate::AssignedValue;
 
 /// output when desired
 #[derive(Debug, Clone)]

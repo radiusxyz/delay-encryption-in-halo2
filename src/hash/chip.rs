@@ -1,11 +1,9 @@
 use ff::FromUniformBytes;
-use maingate::{AssignedValue, MainGate, MainGateConfig, MainGateInstructions, RegionCtx, Term};
+use maingate::{AssignedValue, MainGateConfig, RegionCtx};
 //use halo2::{halo2curves::ff::PrimeField, plonk::Error};
+use crate::poseidon::*;
 use halo2::halo2curves::ff::PrimeField;
 use halo2wrong::halo2::plonk::Error;
-
-// use crate::poseidon;
-use crate::{poseidon::chip::AssignedState, poseidon::*};
 
 #[derive(Debug, Clone)]
 pub struct HasherChip<
