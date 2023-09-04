@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, sync::Arc};
+use std::{clone, marker::PhantomData, sync::Arc};
 
 use ff::{FromUniformBytes, PrimeField};
 
@@ -90,8 +90,6 @@ impl<
             // let pre_constants = &[F::ZERO;T];
             // println!("chunklen{:?}", inputs.len());
 
-            
-
             // Add inputs along with constants
             for (word, input) in self.pose_chip.state.0.iter_mut().skip(1).zip(inputs.iter()) {
                 *word = main_gate.add(ctx, word, input)?;
@@ -104,7 +102,6 @@ impl<
             // println!("i counter{:?}", i);
 
             self.pose_chip.permutation(ctx, inputs.to_vec())?;
-            
         }
 
         cipher_text.push(self.pose_chip.state.0[1].clone());
@@ -113,7 +110,8 @@ impl<
     }
 }
 
-pub(crate) struct PoseidonEncCircuit<
+#[derive(Clone)]
+pub struct PoseidonEncCircuit<
     F: PrimeField + FromUniformBytes<64>,
     const T: usize,
     const RATE: usize,
@@ -189,9 +187,9 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 // add the input to the currentn state and output encrypted result
                 let cipher_text = pos_enc_chip.absorb_and_relese(ctx)?;
 
-                println!("cipher: {:?}", cipher_text);
-                println!("expected cipher: {:?}\n", expected_result);
-                println!("cipher len: {:?}", cipher_text.len());
+                // println!("cipher: {:?}", cipher_text);
+                // println!("expected cipher: {:?}\n", expected_result);
+                // println!("cipher len: {:?}", cipher_text.len());
 
                 // constrain with encryption result
                 // println!("check out equality..");
@@ -242,6 +240,3 @@ fn test_pos_enc() {
 
     run::<BnFr, 5, 4>();
 }
-
-
-

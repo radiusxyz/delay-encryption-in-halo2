@@ -34,13 +34,6 @@ use maingate::{
     RangeConfig, RangeInstructions,
 };
 
-// use halo2_proofs::circuit::value::Value;
-// use ecc::{integer::rns::Rns, BaseFieldEccChip, EccConfig};
-
-// Poseidon Constants
-const NUMBER_OF_LIMBS: usize = 4;
-const BIT_LEN_LIMB: usize = 68;
-
 #[derive(Clone)]
 struct DelayEncCircuitConfig {
     // RSA
@@ -323,8 +316,6 @@ fn test_de_circuit() {
         let inputs = (0..(MESSAGE_CAPACITY)).map(|_| F::ZERO).collect::<Vec<F>>();
 
         //== Poseidon Encryption ==//
-
-        // let ref_cipher = ref_pos_enc.encrypt(&inputs, &F::ONE);
 
         //== Circuit ==//
 

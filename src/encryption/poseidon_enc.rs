@@ -107,9 +107,13 @@ where
         let mut i = 0;
 
         for inputs in message.chunks(RATE) {
-            
-            for (word, input) in encrypter.state.words().iter_mut().skip(1).zip(inputs.iter()) {
-                
+            for (word, input) in encrypter
+                .state
+                .words()
+                .iter_mut()
+                .skip(1)
+                .zip(inputs.iter())
+            {
                 *word = word.add(input);
                 if i < MESSAGE_CAPACITY {
                     cipher[i] = word.clone();
@@ -117,11 +121,13 @@ where
                 }
             }
             if inputs.len() == RATE {
-            encrypter.perm_with_input(&inputs);}
-            else {encrypter.perm_remain(0);}
+                encrypter.perm_with_input(&inputs);
+            } else {
+                encrypter.perm_remain(0);
+            }
         }
         // encrypter.perm_with_input(&[]);
-        
+
         cipher[MESSAGE_CAPACITY] = encrypter.state.words()[1].clone();
 
         self.cipher = cipher;
@@ -145,8 +151,8 @@ where
         let mut state_2 = encrypter.state.words().clone();
 
         (0..MESSAGE_CAPACITY).for_each(|i| {
-            message[i] = self.cipher[i] - state_2[(i + 1)%T];
-            state_2[(i + 1)%T] = self.cipher[i];
+            message[i] = self.cipher[i] - state_2[(i + 1) % T];
+            state_2[(i + 1) % T] = self.cipher[i];
         });
 
         encrypter.perm_with_input(&mut message);
