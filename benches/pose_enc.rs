@@ -1,3 +1,5 @@
+// To run this bench file, command 'cargo bench'
+// To turn-off one of the bench examples, add '#' to the correspond lines below [[bench]] setting in Cargo.toml file
 use ff::Field;
 use halo2::halo2curves::bn256::{Fr, G1Affine};
 use halo2_delay_enc::encryption::poseidon_enc::PoseidonCipher;
@@ -34,17 +36,14 @@ use std::{
 use criterion::{criterion_group, criterion_main, Criterion};
 use rand::rngs::OsRng;
 
-const K: u32 = 11;
-
-fn bench_poseidon<const T: usize, const RATE: usize>(name: &str, c: &mut Criterion) {
+fn bench_poseidon<const T: usize, const RATE: usize, const K: u32>(name: &str, c: &mut Criterion) {
     // define prover and verifier names
-    let mut prover_name = "Measure prover time in ".to_string();
-    let mut verifier_name = "Measure verifier time in ".to_string();
-    prover_name += name;
-    verifier_name += name;
+    let prover_name = "Measure prover time in ".to_owned() + name;
+    let verifier_name = "Measure verifier time in ".to_owned() + name;
 
     // set params for protocol
-    let params_path = Path::new("./benches/data/params_pose_enc");
+    let params_path = "./benches/data/params_pose_enc_".to_owned() + &K.to_string();
+    let params_path = Path::new(&params_path);
     if File::open(params_path).is_err() {
         let params: ParamsIPA<G1Affine> = ParamsIPA::new(K);
         let mut buf = Vec::new();
@@ -55,6 +54,7 @@ fn bench_poseidon<const T: usize, const RATE: usize>(name: &str, c: &mut Criteri
         file.write_all(&buf[..])
             .expect("Failed to write params to file");
     }
+
     let params_fs = File::open(params_path).expect("Failed to load params");
     let params: ParamsIPA<G1Affine> =
         ParamsIPA::read::<_>(&mut BufReader::new(params_fs)).expect("Failed to read params");
@@ -77,19 +77,6 @@ fn bench_poseidon<const T: usize, const RATE: usize>(name: &str, c: &mut Criteri
 
     let ref_cipher = ref_pos_enc.encrypt(&inputs, &Fr::ONE);
 
-    // wooju - TODO: knowing how to set the params for empty circuit
-
-    let empty_circuit = PoseidonEncCircuit::<Fr, T, RATE> {
-        spec: spec.clone(),
-        num_input: MESSAGE_CAPACITY,
-        message: Value::known(inputs.clone()),
-        key: [key.key0, key.key1],
-        expected: ref_cipher.to_vec(),
-    };
-
-    let vk = keygen_vk(&params, &empty_circuit).expect("keygen_vk failed");
-    let pk = keygen_pk(&params, vk, &empty_circuit).expect("keygen_pk failed");
-
     let circuit = PoseidonEncCircuit::<Fr, T, RATE> {
         spec: spec,
         num_input: MESSAGE_CAPACITY,
@@ -98,8 +85,12 @@ fn bench_poseidon<const T: usize, const RATE: usize>(name: &str, c: &mut Criteri
         expected: ref_cipher.to_vec(),
     };
 
+    let vk = keygen_vk(&params, &circuit.clone()).expect("keygen_vk failed");
+    let pk = keygen_pk(&params, vk, &circuit.clone()).expect("keygen_pk failed");
+
     // Benchmark the proof generation and store the proof
-    let proof_path = Path::new("./benches/data/proof_pose_enc");
+    let proof_path = "./benches/data/proof_pose_enc_".to_owned() + &K.to_string();
+    let proof_path = Path::new(&proof_path);
     if File::open(proof_path).is_err() {
         let mut transcript = Blake2bWrite::<_, _, Challenge255<_>>::init(vec![]);
         c.bench_function(&prover_name, |b| {
@@ -124,7 +115,7 @@ fn bench_poseidon<const T: usize, const RATE: usize>(name: &str, c: &mut Criteri
     let mut proof = Vec::<u8>::new();
     proof_fs
         .read_to_end(&mut proof)
-        .expect("Couldn't read proof");
+        .expect("Fail to read proof");
 
     // Benchmark the verification
     c.bench_function(&verifier_name, |b| {
@@ -145,7 +136,7 @@ fn bench_poseidon<const T: usize, const RATE: usize>(name: &str, c: &mut Criteri
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
-    bench_poseidon::<5, 4>("poseidon encryption", c);
+    bench_poseidon::<5, 4, 11>("poseidon encryption", c);
 }
 
 criterion_group!(benches, criterion_benchmark);

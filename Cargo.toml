@@ -41,5 +41,9 @@ doctest = false
 bench = false
 
 [[bench]]
-name = "poseidon_encryption"
+name = "pose_enc"
+harness = false
+
+[[bench]]
+name = "mod_pow"
 harness = false
