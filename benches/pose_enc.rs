@@ -1,5 +1,5 @@
-// To run this bench file, command 'cargo bench'
-// To turn-off one of the bench examples, add '#' to the correspond lines below [[bench]] setting in Cargo.toml file
+// To run this bench file, command "cargo bench"
+// To bench one example, add command "cargo bench --bench 'example_name'"
 use ff::Field;
 use halo2::halo2curves::bn256::{Fr, G1Affine};
 use halo2_delay_enc::encryption::poseidon_enc::PoseidonCipher;

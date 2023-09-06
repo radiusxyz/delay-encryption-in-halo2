@@ -86,6 +86,8 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
         let bigint_chip = rsa_chip.bigint_chip();
         let limb_width = Self::LIMB_WIDTH;
         let num_limbs = Self::BITS_LEN / Self::LIMB_WIDTH;
+        let range_chip = bigint_chip.range_chip();
+        range_chip.load_table(&mut layouter)?;
 
         layouter.assign_region(
             || "rsa modpow with 2048 bits",
@@ -124,13 +126,13 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
     }
 }
 
-fn bench_poseidon<const T: usize, const RATE: usize, const K: u32>(name: &str, c: &mut Criterion) {
+fn bench_mod_pow<const T: usize, const RATE: usize, const K: u32>(name: &str, c: &mut Criterion) {
     // define prover and verifier names
     let prover_name = "Measure prover time in ".to_owned() + name;
     let verifier_name = "Measure verifier time in ".to_owned() + name;
 
     // set params for protocol
-    let params_path = "./benches/data/params_pose_enc_".to_owned() + &K.to_string();
+    let params_path = "./benches/data/params_mod_pow_".to_owned() + &K.to_string();
     let params_path = Path::new(&params_path);
     if File::open(params_path).is_err() {
         let params: ParamsIPA<G1Affine> = ParamsIPA::new(K);
@@ -168,7 +170,7 @@ fn bench_poseidon<const T: usize, const RATE: usize, const K: u32>(name: &str, c
     let pk = keygen_pk(&params, vk, &circuit.clone()).expect("keygen_pk failed");
 
     // Benchmark the proof generation and store the proof
-    let proof_path = "./benches/data/proof_pose_enc_".to_owned() + &K.to_string();
+    let proof_path = "./benches/data/proof_mod_pow_".to_owned() + &K.to_string();
     let proof_path = Path::new(&proof_path);
     if File::open(proof_path).is_err() {
         let mut transcript = Blake2bWrite::<_, _, Challenge255<_>>::init(vec![]);
@@ -215,7 +217,7 @@ fn bench_poseidon<const T: usize, const RATE: usize, const K: u32>(name: &str, c
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
-    bench_poseidon::<5, 4, 17>("modulo power", c);
+    bench_mod_pow::<5, 4, 17>("modulo power", c);
 }
 
 criterion_group!(benches, criterion_benchmark);

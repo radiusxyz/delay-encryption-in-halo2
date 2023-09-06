@@ -35,7 +35,7 @@ use maingate::{
 };
 
 #[derive(Clone)]
-struct DelayEncCircuitConfig {
+pub struct DelayEncCircuitConfig {
     // RSA
     rsa_config: RSAConfig,
     // Poseidon Encryption
@@ -59,28 +59,27 @@ impl<F: PrimeField + ff::FromUniformBytes<64>, const T: usize, const RATE: usize
     }
 }
 
-struct DelayEncryptCircuit<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize>
+#[derive(Clone)]
+pub struct DelayEncryptCircuit<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize>
 {
     // Mod power
-    n: BigUint,
-    e: BigUint,
-    x: BigUint,
+    pub n: BigUint,
+    pub e: BigUint,
+    pub x: BigUint,
     //
     // Poseidon Enc
-    spec: Spec<F, T, RATE>, // Spec for Poseidon Encryption
-    num_input: usize,       // zeroknight - ??
-    message: Vec<F>,        // message to be encrypted
-    key: PoseidonEncKey<F>,
-    // expected: Vec<F>, // expected cipher text
+    pub spec: Spec<F, T, RATE>,
+    pub num_input: usize,
+    pub message: Vec<F>,
+    pub key: PoseidonEncKey<F>,
 }
 
 impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize>
     DelayEncryptCircuit<F, T, RATE>
 {
-    const BITS_LEN: usize = 2048;
-    const LIMB_WIDTH: usize = RSAChip::<F>::LIMB_WIDTH; // 64
-    const EXP_LIMB_BITS: usize = 5;
-    // const DEFAULT_E: u128 = 65537;
+    pub const BITS_LEN: usize = 2048;
+    pub const LIMB_WIDTH: usize = RSAChip::<F>::LIMB_WIDTH; // 64
+    pub const EXP_LIMB_BITS: usize = 5;
 }
 
 impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Circuit<F>
