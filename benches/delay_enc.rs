@@ -140,7 +140,7 @@ fn main() {
         .nresamples(10); // # of iteration
 
     let benches: Vec<Box<dyn Fn(&mut Criterion)>> = vec![Box::new(|c| {
-        bench_delay::<5, 4, 17>("delay encryptioin", c)
+        bench_delay::<5, 4, 17>("delay encryption", c)
     })];
 
     for bench in benches {

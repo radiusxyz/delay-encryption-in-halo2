@@ -131,9 +131,23 @@ fn bench_poseidon<const T: usize, const RATE: usize, const K: u32>(name: &str, c
     });
 }
 
-fn criterion_benchmark(c: &mut Criterion) {
-    bench_poseidon::<5, 4, 11>("poseidon encryption", c);
-}
+// fn criterion_benchmark(c: &mut Criterion) {
+//     bench_poseidon::<5, 4, 11>("poseidon encryption", c);
+// }
 
-criterion_group!(benches, criterion_benchmark);
-criterion_main!(benches);
+// criterion_group!(benches, criterion_benchmark);
+// criterion_main!(benches);
+
+fn main() {
+    let mut criterion = Criterion::default()
+        .sample_size(10) // # of sample, >= 10
+        .nresamples(10); // # of iteration
+
+    let benches: Vec<Box<dyn Fn(&mut Criterion)>> = vec![Box::new(|c| {
+        bench_poseidon::<5, 4, 17>("poseidon encryption", c)
+    })];
+
+    for bench in benches {
+        bench(&mut criterion);
+    }
+}
