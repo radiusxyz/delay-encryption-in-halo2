@@ -14,7 +14,6 @@ halo2wrong = {git = "https://github.com/privacy-scaling-explorations/halo2wrong"
 halo2 = { package = "halo2_proofs", git = "https://github.com/privacy-scaling-explorations/halo2", tags ="v2023_04_20" }
 # ecc = {git = "https://github.com/privacy-scaling-explorations/halo2wrong", tags = "v2023_04_20"}
 # halo2_gadgets = { package = "halo2_gadgets", git = "https://github.com/privacy-scaling-explorations/halo2", tags ="v2023_04_20" }
-halo2curves = { git = 'https://github.com/privacy-scaling-explorations/halo2curves.git', tag = '0.3.2' }
 halo2_proofs = { git = "https://github.com/privacy-scaling-explorations/halo2.git", tag = "v2023_04_20" }
 
 # Big-integer
@@ -46,4 +45,8 @@ harness = false
 
 [[bench]]
 name = "mod_pow"
+harness = false
+
+[[bench]]
+name = "delay_enc"
 harness = false

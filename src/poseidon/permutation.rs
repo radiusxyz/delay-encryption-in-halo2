@@ -1,4 +1,4 @@
-use halo2curves::group::ff::PrimeField;
+use halo2_proofs::halo2curves::group::ff::PrimeField;
 
 use crate::poseidon::spec::{Spec, State};
 
@@ -51,8 +51,8 @@ impl<F: PrimeField, const T: usize, const RATE: usize> Spec<F, T, RATE> {
 mod tests {
     use super::State;
     use crate::poseidon::spec::{tests::SpecRef, Spec};
-    use halo2curves::bn256::Fr;
-    use halo2curves::group::ff::PrimeField;
+    use halo2_proofs::halo2curves::bn256::Fr;
+    use halo2_proofs::halo2curves::group::ff::PrimeField;
 
     /// We want to keep non-optimized poseidon construction and permutation to
     /// cross test with optimized one
@@ -82,7 +82,7 @@ mod tests {
 
     #[test]
     fn cross_test() {
-        use halo2curves::group::ff::Field;
+        use halo2_proofs::halo2curves::group::ff::Field;
         use rand_core::OsRng;
         use std::time::Instant;
 

@@ -33,8 +33,8 @@ pub struct PoseidonEncChip<
     const R_P: usize,
 > {
     pub pose_chip: PoseidonChip<F, T, RATE, R_F, R_P>,
-    pose_key0: F,
-    pose_key1: F,
+    pub(crate) pose_key0: F,
+    pub(crate) pose_key1: F,
 }
 
 impl<

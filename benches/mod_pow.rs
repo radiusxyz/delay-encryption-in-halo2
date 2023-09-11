@@ -130,24 +130,20 @@ fn bench_mod_pow<const T: usize, const RATE: usize, const K: u32>(name: &str, c:
     // define prover and verifier names
     let prover_name = "Measure prover time in ".to_owned() + name;
     let verifier_name = "Measure verifier time in ".to_owned() + name;
-
     // set params for protocol
     let params_path = "./benches/data/params_mod_pow_".to_owned() + &K.to_string();
     let params_path = Path::new(&params_path);
     if File::open(params_path).is_err() {
         let params: ParamsIPA<G1Affine> = ParamsIPA::new(K);
         let mut buf = Vec::new();
-
         params.write(&mut buf).expect("Failed to write params");
         let mut file = File::create(params_path).expect("Failed to create params");
-
         file.write_all(&buf[..])
             .expect("Failed to write params to file");
     }
     let params_fs = File::open(params_path).expect("Failed to load params");
     let params: ParamsIPA<G1Affine> =
         ParamsIPA::read::<_>(&mut BufReader::new(params_fs)).expect("Failed to read params");
-
     let mut rng = OsRng;
     let bits_len = RSACircuit::<Fr, T, RATE>::BITS_LEN as u64;
     let mut n = BigUint::default();

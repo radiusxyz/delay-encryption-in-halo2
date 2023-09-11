@@ -1,5 +1,5 @@
 use crate::poseidon::spec::{Spec, State};
-use halo2curves::group::ff::{FromUniformBytes, PrimeField};
+use halo2_proofs::halo2curves::group::ff::{FromUniformBytes, PrimeField};
 
 /// output when desired
 #[derive(Debug, Clone)]
