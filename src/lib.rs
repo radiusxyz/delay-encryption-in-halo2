@@ -1,6 +1,6 @@
 pub mod big_integer;
-use std::marker::PhantomData;
 pub use big_integer::*;
+use std::marker::PhantomData;
 pub mod hash;
 use halo2_proofs::circuit::AssignedCell;
 pub use hash::*;
@@ -16,8 +16,7 @@ use rand_core::OsRng;
 pub mod poseidon;
 pub use crate::poseidon::*;
 pub mod encryption;
-use ff::{FromUniformBytes, PrimeField, Field};
-use num_bigint::{BigUint, RandomBits};
+use ff::{Field, FromUniformBytes, PrimeField};
 use halo2wrong::{
     halo2::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
@@ -29,6 +28,7 @@ use maingate::{
     decompose_big, mock_prover_verify, MainGate, MainGateConfig, MainGateInstructions, RangeChip,
     RangeConfig, RangeInstructions,
 };
+use num_bigint::{BigUint, RandomBits};
 
 #[derive(Clone, Debug)]
 pub struct DelayEncCircuitConfig {
@@ -37,7 +37,7 @@ pub struct DelayEncCircuitConfig {
     // Poseidon Encryption
     enc_config: MainGateConfig,
     // Hash
-    hash_config: MainGateConfig
+    hash_config: MainGateConfig,
 }
 
 #[derive(Debug, Clone)]
@@ -61,14 +61,16 @@ impl<F: PrimeField + ff::FromUniformBytes<64>, const T: usize, const RATE: usize
         }
     }
 
-
     pub fn new_hash(
         ctx: &mut RegionCtx<'_, F>,
         spec: &Spec<F, T, RATE>,
         main_gate_config: &MainGateConfig,
     ) -> Result<HasherChip<F, T, RATE, FULL_ROUND, PARTIAL_ROUND>, Error> {
-        let pos_hash_chip =
-            PoseidonChip::<F, T, RATE,FULL_ROUND, PARTIAL_ROUND>::new_hash(ctx, spec, main_gate_config)?;
+        let pos_hash_chip = PoseidonChip::<F, T, RATE, FULL_ROUND, PARTIAL_ROUND>::new_hash(
+            ctx,
+            spec,
+            main_gate_config,
+        )?;
 
         Ok(HasherChip {
             pose_chip: pos_hash_chip,
@@ -136,7 +138,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
         let maingate_config = MainGate::<F>::configure(meta);
         // let enc_config = MainGate::<F>::configure(meta);
         // let hash_config = MainGate::<F>::configure(meta);
-        
+
         // rsa config
         // let rsa_gate_config = MainGate::<F>::configure(meta);
         let rsa_gate_config = maingate_config.clone();
@@ -159,7 +161,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
         DelayEncCircuitConfig {
             rsa_config,
             enc_config,
-            hash_config
+            hash_config,
         }
     }
 
@@ -215,13 +217,11 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
             |region| {
                 let offset = 0;
                 let ctx = &mut RegionCtx::new(region, offset);
-                let mut hasher = DelayEncChip::<F, T, RATE>::new_hash(
-                    ctx,
-                    &self.spec,
-                    &config.hash_config,
-                )?;
+                let mut hasher =
+                    DelayEncChip::<F, T, RATE>::new_hash(ctx, &self.spec, &config.hash_config)?;
                 for i in 0..rsa_output.num_limbs() {
-                    let e = main_gate_chip.assign_value(ctx, rsa_output.limb(i).value().map(|e| *e))?;
+                    let e =
+                        main_gate_chip.assign_value(ctx, rsa_output.limb(i).value().map(|e| *e))?;
                     println!("{:?}", e);
                     hasher.update(&[e.clone()]);
                     // hash_gate.assert_equal(ctx, e, b); giving equality constraint
@@ -238,7 +238,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 h_out.push(h_assiged.clone());
                 println!("\nhash_output2: {:?}", h_value);
                 Ok(h_out)
-            }
+            },
         )?;
         layouter.assign_region(
             || "poseidon region",
@@ -306,40 +306,42 @@ fn test_de_circuit() {
     use rand::{thread_rng, Rng};
     // FromUniformBytes : Trait for constructing a PrimeField element from a fixed-length uniform byte array.
     // fn run<F: FromUniformBytes<64> + Ord, const T: usize, const RATE: usize>() {
-        let mut rng = thread_rng();
-        let bits_len = DelayEncryptCircuit::<Fr, 5, 4>::BITS_LEN as u64;
-        let mut n = BigUint::default();
-        while n.bits() != bits_len {
-            n = rng.sample(RandomBits::new(bits_len));
-        }
-        let e = rng.sample::<BigUint, _>(RandomBits::new(
-            DelayEncryptCircuit::<Fr, 5, 4>::EXP_LIMB_BITS as u64,
-        )) % &n;
-        let x = rng.sample::<BigUint, _>(RandomBits::new(bits_len)) % &n;
-        // let key: PoseidonEncKey<Fr> = PoseidonEncKey::init();
-        let spec = Spec::<Fr, 5, 4>::new(8, 57);
-        let inputs = (0..(MESSAGE_CAPACITY)).map(|_| Fr::ZERO).collect::<Vec<Fr>>();
-        //== Circuit ==//
-        let circuit = DelayEncryptCircuit::<Fr, 5, 4> {
-            n: n,
-            e: e,
-            x: x,
-            spec: spec.clone(),
-            num_input: MESSAGE_CAPACITY,
-            message: inputs,
-            // key: key,
-            // expected: ref_cipher.to_vec(),
-        };
+    let mut rng = thread_rng();
+    let bits_len = DelayEncryptCircuit::<Fr, 5, 4>::BITS_LEN as u64;
+    let mut n = BigUint::default();
+    while n.bits() != bits_len {
+        n = rng.sample(RandomBits::new(bits_len));
+    }
+    let e = rng.sample::<BigUint, _>(RandomBits::new(
+        DelayEncryptCircuit::<Fr, 5, 4>::EXP_LIMB_BITS as u64,
+    )) % &n;
+    let x = rng.sample::<BigUint, _>(RandomBits::new(bits_len)) % &n;
+    // let key: PoseidonEncKey<Fr> = PoseidonEncKey::init();
+    let spec = Spec::<Fr, 5, 4>::new(8, 57);
+    let inputs = (0..(MESSAGE_CAPACITY))
+        .map(|_| Fr::ZERO)
+        .collect::<Vec<Fr>>();
+    //== Circuit ==//
+    let circuit = DelayEncryptCircuit::<Fr, 5, 4> {
+        n: n,
+        e: e,
+        x: x,
+        spec: spec.clone(),
+        num_input: MESSAGE_CAPACITY,
+        message: inputs,
+        // key: key,
+        // expected: ref_cipher.to_vec(),
+    };
 
-        let public_inputs = vec![vec![]];
-        mock_prover_verify(&circuit, public_inputs);
-        /*
-        let k = 30; //17
-        let prover = match MockProver::run(k, &circuit, public_inputs) {
-            Ok(prover) => prover,
-            Err(e) => panic!("{:#?}", e)
-        };
-        assert_eq!(prover.verify().is_err(), false);
-        */
+    let public_inputs = vec![vec![]];
+    mock_prover_verify(&circuit, public_inputs);
+    /*
+    let k = 30; //17
+    let prover = match MockProver::run(k, &circuit, public_inputs) {
+        Ok(prover) => prover,
+        Err(e) => panic!("{:#?}", e)
+    };
+    assert_eq!(prover.verify().is_err(), false);
+    */
     // }
 }
