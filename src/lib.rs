@@ -2,7 +2,7 @@ pub mod big_integer;
 pub use big_integer::*;
 use std::marker::PhantomData;
 pub mod hash;
-use halo2_proofs::circuit::AssignedCell;
+use halo2_proofs::{circuit::AssignedCell, poly::VerificationStrategy};
 pub use hash::*;
 use poseidon::chip::{FULL_ROUND, PARTIAL_ROUND};
 pub mod rsa;
@@ -344,4 +344,90 @@ fn test_de_circuit() {
     assert_eq!(prover.verify().is_err(), false);
     */
     // }
+}
+
+
+
+
+use halo2_proofs::{
+poly::{
+kzg::{
+commitment::{ParamsKZG, KZGCommitmentScheme},
+multiopen::{ProverGWC, VerifierGWC},
+strategy::AccumulatorStrategy
+}, commitment::ParamsProver
+},
+plonk::{keygen_vk, keygen_pk, create_proof, verify_proof},
+transcript::{
+Blake2bWrite, Challenge255, TranscriptWriterBuffer,
+Blake2bRead, TranscriptReadBuffer
+}
+};
+
+
+
+
+#[test]
+fn test_prove_verify_de_circuit() {
+    use halo2wrong::curves::bn256::{Fr, G1Affine, Bn256};
+    use rand::{thread_rng, Rng};
+    // FromUniformBytes : Trait for constructing a PrimeField element from a fixed-length uniform byte array.
+    // fn run<F: FromUniformBytes<64> + Ord, const T: usize, const RATE: usize>() {
+    let mut rng = thread_rng();
+    let bits_len = DelayEncryptCircuit::<Fr, 5, 4>::BITS_LEN as u64;
+    let mut n = BigUint::default();
+    while n.bits() != bits_len {
+        n = rng.sample(RandomBits::new(bits_len));
+    }
+    let e = rng.sample::<BigUint, _>(RandomBits::new(
+        DelayEncryptCircuit::<Fr, 5, 4>::EXP_LIMB_BITS as u64,
+    )) % &n;
+    let x = rng.sample::<BigUint, _>(RandomBits::new(bits_len)) % &n;
+    // let key: PoseidonEncKey<Fr> = PoseidonEncKey::init();
+    let spec = Spec::<Fr, 5, 4>::new(8, 57);
+    let inputs = (0..(MESSAGE_CAPACITY))
+        .map(|_| Fr::ZERO)
+        .collect::<Vec<Fr>>();
+    //== Circuit ==//
+    let circuit = DelayEncryptCircuit::<Fr, 5, 4> {
+        n: n,
+        e: e,
+        x: x,
+        spec: spec.clone(),
+        num_input: MESSAGE_CAPACITY,
+        message: inputs,
+        // key: key,
+        // expected: ref_cipher.to_vec(),
+    };
+
+
+    // let public_inputs = vec![vec![]];
+    let params = ParamsKZG::<Bn256>::setup(17, OsRng);
+    let vk = keygen_vk(&params, &circuit.clone()).expect("keygen_vk failed");
+    let pk = keygen_pk(&params, vk, &circuit.clone()).expect("keygen_pk failed");
+
+
+    let mut transcript = Blake2bWrite::<_, _, Challenge255<_>>::init(vec![]);
+
+
+    create_proof::<KZGCommitmentScheme<Bn256>, ProverGWC<_>, _, _, _, _>(
+        &params,
+        &pk,
+        &[circuit.clone()],
+        &[&[&[]]],
+        &mut OsRng,
+        &mut transcript,)
+    .expect("proof generation failed");
+
+    let proof: Vec<u8> = transcript.finalize();
+    let mut transcript: Blake2bRead<&[u8], G1Affine, Challenge255<_>> =
+                Blake2bRead::<_, _, Challenge255<_>>::init(&proof[..]);
+    let verify = VerificationStrategy::<_, VerifierGWC<_>>::finalize(
+    verify_proof::<_, VerifierGWC<_>, _, _, _>(
+        params.verifier_params(), pk.get_vk(), AccumulatorStrategy::new(params.verifier_params()),
+    &[&[&[]]], &mut transcript,).unwrap(),
+    );
+
+    println!("Verify : {}", verify);
+
 }
