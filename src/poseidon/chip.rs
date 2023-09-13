@@ -91,6 +91,42 @@ impl<
         })
     }
 
+    /// encryption for delay encryption
+    pub fn new_enc_de(
+        ctx: &mut RegionCtx<'_, F>,
+        spec: &Spec<F, T, RATE>,
+        main_gate_config: &MainGateConfig,
+        key0: &F,
+        key1: &F,
+    ) -> Result<Self, Error> {
+        let main_gate = MainGate::<_>::new(main_gate_config.clone());
+        let state = [
+            // Domain - Maximum plaintext length of the elements of Fq, as defined
+            // [F::from_u128(0x100000000 as u128),
+            // F::from_u128(MESSAGE_CAPACITY_TEST as u128),
+
+            // nonce]
+            // debuging purpose
+            F::ZERO,
+            F::ZERO,
+            *key0,
+            *key1,
+            F::ONE,
+        ];
+        let initial_state = State::<F, T>::init_state(state)
+            .words()
+            .iter()
+            .map(|word| main_gate.assign_value(ctx, Value::known(*word)))
+            .collect::<Result<Vec<AssignedValue<F>>, Error>>()?;
+
+        Ok(Self {
+            state: AssignedState(initial_state.try_into().unwrap()),
+            spec: spec.clone(),
+            absorbing: vec![],
+            main_gate_config: main_gate_config.clone(),
+        })
+    }
+
     /// Construct PoseidonChip
     pub fn new_hash(
         ctx: &mut RegionCtx<'_, F>,

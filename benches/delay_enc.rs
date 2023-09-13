@@ -6,7 +6,6 @@ use halo2_delay_enc::{
 };
 use halo2_proofs::halo2curves::bn256::{Bn256, Fr, G1Affine};
 use halo2_proofs::{
-    SerdeFormat,
     plonk::*,
     poly::{commitment::Params, VerificationStrategy},
     poly::{
@@ -19,6 +18,7 @@ use halo2_proofs::{
     },
     transcript::{Blake2bRead, Blake2bWrite, Challenge255},
     transcript::{TranscriptReadBuffer, TranscriptWriterBuffer},
+    SerdeFormat,
 };
 use num_bigint::{BigUint, RandomBits};
 use rand::thread_rng;
@@ -146,12 +146,6 @@ fn bench_delay<const T: usize, const RATE: usize, const K: u32>(name: &str, c: &
     // Benchmark the verification
     c.bench_function(&verifier_name, |b| {
         b.iter(|| {
-            let strategy: AccumulatorStrategy<'_, Bn256> = AccumulatorStrategy::new(&params);
-            let mut transcript: Blake2bRead<&[u8], G1Affine, Challenge255<_>> =
-                Blake2bRead::<_, _, Challenge255<_>>::init(&proof[..]);
-
-
-
             let accept = {
                 let mut transcript: Blake2bRead<&[u8], _, Challenge255<_>> =
                     TranscriptReadBuffer::<_, G1Affine, _>::init(proof.as_slice());
@@ -184,7 +178,7 @@ fn main() {
         .nresamples(10); // # of iteration
 
     let benches: Vec<Box<dyn Fn(&mut Criterion)>> =
-        vec![Box::new(|c| bench_delay::<5, 4, 17>("delay encryption", c))];
+        vec![Box::new(|c| bench_delay::<5, 4, 16>("delay encryption", c))];
 
     for bench in benches {
         bench(&mut criterion);
