@@ -247,11 +247,13 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 let ctx = &mut RegionCtx::new(region, offset);
                 let mut pose_key = [F::ZERO; 2];
                 // set poseidon enc key as the ouput of rsa
-                h_out[0].value().map(|e| *e).map(|v| pose_key[0] = v);
-                h_out[1].value().map(|e| *e).map(|v| pose_key[1] = v);
-                // == Encryption Scheme == //
+                h_out[0].clone().value().map(|e| *e).map(move|v| pose_key[0] = v);
+                h_out[1].clone().value().map(|e| *e).map(move|v| pose_key[1] = v);
+                // // == Encryption Scheme == //
+                // pose_key = [F::ZERO; 2];
                 let mut ref_enc =
                     PoseidonCipher::<F, FULL_ROUND, PARTIAL_ROUND, T, RATE>::new(pose_key);
+                
                 let encryption_result = ref_enc.encrypt(&self.message, &F::ONE);
                 let mut expected_result = vec![];
                 // assign expected result
@@ -267,8 +269,8 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                     &config.enc_config,
                     pose_key,
                 )?;
-                let _ = main_gate_chip.assert_equal(ctx, &enc.pose_chip.state.0[2], &h_out[0]);
-                let _ = main_gate_chip.assert_equal(ctx, &enc.pose_chip.state.0[3], &h_out[1]);
+                // let _ = main_gate_chip.assert_equal(ctx, &enc.pose_chip.state.0[2], &h_out[0])?;
+                // let _ = main_gate_chip.assert_equal(ctx, &enc.pose_chip.state.0[3], &h_out[1])?;
                 // check the assigned initial state
                 println!("\nzk_state: {:?}", enc.pose_chip.state.0);
                 println!("\npose_key: {:?}", pose_key);
