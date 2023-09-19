@@ -99,27 +99,19 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                     (self.e.clone(), 1, Self::EXP_LIMB_BITS); // EXP_LIMB_BITS 5
                 let e_unassigned = UnassignedInteger::from(e_limbs);
                 let e_var = RSAPubE::Var(e_unassigned);
-
                 let n_limbs = decompose_big::<F>(self.n.clone(), num_limbs, limb_width);
                 let n_unassigned = UnassignedInteger::from(n_limbs);
-
                 let public_key_var = RSAPublicKey::new(n_unassigned.clone(), e_var);
                 let public_key_var = rsa_chip.assign_public_key(ctx, public_key_var)?;
-
                 let x_limbs = decompose_big::<F>(self.x.clone(), num_limbs, limb_width);
                 let x_unssigned = UnassignedInteger::from(x_limbs);
-                // Assigns a variable AssignedInteger whose RangeType is Fresh.
-                // Returns a new AssignedInteger. The bit length of each limb is less than self.limb_width, and the number of its limbs is self.num_limbs.
                 let x_assigned = bigint_chip.assign_integer(ctx, x_unssigned)?;
                 // Given a base x, a RSA public key (e,n), performs the modular power x^e mod n.
                 let powed_var = rsa_chip.modpow_public_key(ctx, &x_assigned, &public_key_var)?;
-
                 let valid_powed_var_biguint = big_pow_mod(&self.x, &self.e, &self.n);
-
                 let valid_powed_var_biguint =
                     bigint_chip.assign_constant_fresh(ctx, valid_powed_var_biguint)?;
                 bigint_chip.assert_equal_fresh(ctx, &powed_var, &valid_powed_var_biguint)?;
-
                 Ok(())
             },
         )?;
@@ -148,13 +140,15 @@ fn bench_mod_pow<const T: usize, const RATE: usize, const K: u32>(name: &str, c:
     let mut rng = OsRng;
     let bits_len = RSACircuit::<Fr, T, RATE>::BITS_LEN as u64;
     let mut n = BigUint::default();
+    let exp_bits_len = RSACircuit::<Fr, T, RATE>::EXP_LIMB_BITS as u64;
     while n.bits() != bits_len {
         n = rng.sample(RandomBits::new(bits_len));
     }
-    let e = rng.sample::<BigUint, _>(RandomBits::new(
-        RSACircuit::<Fr, T, RATE>::EXP_LIMB_BITS as u64,
-    )) % &n;
+    let e = rng.sample::<BigUint, _>(RandomBits::new(exp_bits_len)) % &n;
     let x = rng.sample::<BigUint, _>(RandomBits::new(bits_len)) % &n;
+
+    print!("\nBase length: {:?}\n", bits_len);
+    print!("\nExp length: {:?}\n", exp_bits_len);
 
     let circuit = RSACircuit::<Fr, T, RATE> {
         n: n,

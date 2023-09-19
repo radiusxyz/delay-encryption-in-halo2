@@ -74,6 +74,8 @@ fn bench_poseidon<const T: usize, const RATE: usize, const K: u32>(name: &str, c
 
     let ref_cipher = ref_pos_enc.encrypt(&inputs, &Fr::ONE);
 
+    print!("\nmsg length: {:?}\n", MESSAGE_CAPACITY);
+
     let circuit: PoseidonEncCircuit<Fr, T, RATE> = PoseidonEncCircuit::<Fr, T, RATE> {
         spec: spec,
         num_input: MESSAGE_CAPACITY,

@@ -318,15 +318,15 @@ fn test_de_circuit() {
     // fn run<F: FromUniformBytes<64> + Ord, const T: usize, const RATE: usize>() {
     let mut rng = thread_rng();
     let bits_len = DelayEncryptCircuit::<Fr, 5, 4>::BITS_LEN as u64;
+    let exp_bits_len = DelayEncryptCircuit::<Fr, 5, 4>::EXP_LIMB_BITS as u64;
     let mut n = BigUint::default();
     while n.bits() != bits_len {
         n = rng.sample(RandomBits::new(bits_len));
     }
-    let e = rng.sample::<BigUint, _>(RandomBits::new(
-        DelayEncryptCircuit::<Fr, 5, 4>::EXP_LIMB_BITS as u64,
-    )) % &n;
+    let e = rng.sample::<BigUint, _>(RandomBits::new(exp_bits_len)) % &n;
     let x = rng.sample::<BigUint, _>(RandomBits::new(bits_len)) % &n;
-    // let key: PoseidonEncKey<Fr> = PoseidonEncKey::init();
+    print!("\nBase length: {:?}\n", bits_len);
+    print!("\nExp length: {:?}\n", exp_bits_len);
     let spec = Spec::<Fr, 5, 4>::new(8, 57);
     let inputs = (0..(MESSAGE_CAPACITY))
         .map(|_| Fr::ZERO)
