@@ -30,6 +30,24 @@ Note that, the parameter size depends on the $k$ which has to set bigger than or
     - CPU: Apple M1 Pro
     - Memory: 16GB
     - Storage: SSD 1T
+$\quad$
+- Notation
+    - $k$: degree of the poly.
+    - $| g |$: bit-size of the base in $g^T$
+    - $| T |$: bit-size of the exponent in $g^T$
+    - $| msg |$: # of field elements to express an message
+    - $|\pi |$: proof size
+    - $| pk |$: prover key size
+    - $| vk |$: verifier key size
+
+
+### performance of PVDE circuit
+
+| $k$ | advice |  fixed | $\|g \|$ | $\| msg \|$ | proving time | verifying time | $\|\pi \|$ | $\|pk\|$ | $\|vk\|$ |
+| :-: | :----: | :----: | :------: | :---------: | :----------: | :------------: | :--------: | :------: | :------: |
+|  15 |  20912 |  20912 | 2048-bit |           1 |     2.0394 s |      3.6456 ms |       286K |     138M |     9.3K |
+|  15 |  20916 |  20916 | 2048-bit |           2 |     2.0321 s |      3.5573 ms |       286K |     138M |     9.3K |
+|  15 |  26058 |  26058 | 2048-bit |          31 |     3.7977 s |      3.9912 ms |       286K |     138M |     9.3K |
 
 ### performance of delay encryption circuit
 
