@@ -26,7 +26,7 @@ use halo2wrong::{
 };
 use maingate::{
     decompose_big, mock_prover_verify, MainGate, MainGateConfig, MainGateInstructions, RangeChip,
-    RangeConfig, RangeInstructions,
+    RangeConfig, RangeInstructions, big_to_fe,
 };
 use num_bigint::{BigUint, RandomBits};
 
@@ -229,24 +229,34 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 let ctx = &mut RegionCtx::new(region, offset);
                 let mut hasher =
                     DelayEncChip::<F, T, RATE>::new_hash(ctx, &self.spec, &config.hash_config)?;
-                for i in 0..rsa_output.num_limbs() {
-                    let e =
-                        main_gate_chip.assign_value(ctx, rsa_output.limb(i).value().map(|e| *e))?;
-                    println!("{:?}", e);
+                let base1 = main_gate_chip.assign_constant(ctx, big_to_fe(BigUint::from(2_u64.pow((16 as u64).try_into().unwrap()))))?;
+                let base2 = main_gate_chip.assign_constant(ctx, big_to_fe(BigUint::from(2_u64.pow((32 as u64).try_into().unwrap()))))?;
+                for i in 0..rsa_output.num_limbs()/3 {
+                    let mut a_poly = rsa_output.limb(3 * i);
+                    a_poly = main_gate_chip.mul_add(ctx, &rsa_output.limb(3 * i + 1), &base1, &a_poly)?;
+                    a_poly = main_gate_chip.mul_add(ctx, &rsa_output.limb(3 * i + 2), &base2, &a_poly)?;
+                    println!("a_ploy value:{:?}", a_poly);
+                    let e = a_poly;
                     hasher.update(&[e.clone()]);
-                    // hash_gate.assert_equal(ctx, e, b); giving equality constraint
                 }
+
+                let mut a_poly = rsa_output.limb(30);
+
+                a_poly = main_gate_chip.mul_add(ctx, &rsa_output.limb(31), &base1, &a_poly)?;
+                println!("a_ploy value:{:?}", a_poly);
+                let e = a_poly;
+                hasher.update(&[e.clone()]);
                 let mut h_out: Vec<AssignedCell<F, F>> = vec![];
                 let h_assiged = hasher.hash(ctx)?;
                 h_out.push(h_assiged.clone());
                 // let expected = main_gate.assign_value(ctx, self.expected)?;
                 let h_value = h_assiged.value().map(|e| *e);
-                println!("\nhash_output1: {:?}", h_value);
+                // println!("\nhash_output1: {:?}", h_value);
                 hasher.pose_chip.perm_hash(ctx, vec![])?;
                 let h_assiged = hasher.pose_chip.state.0[1].clone();
                 let h_value = h_assiged.value().map(|e| *e);
                 h_out.push(h_assiged.clone());
-                println!("\nhash_output2: {:?}", h_value);
+                // println!("\nhash_output2: {:?}", h_value);
                 Ok(h_out)
             },
         )?;
