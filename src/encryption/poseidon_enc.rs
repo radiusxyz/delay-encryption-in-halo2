@@ -96,8 +96,8 @@ where
         let mut cipher = [F::ZERO; CIPHER_SIZE];
 
         // zeroknight : permutation is update in Poseidon
-        encrypter.perm_with_input(&vec![]);
-        encrypter.perm_remain(0);
+        encrypter.update(&vec![]);
+        encrypter.squeeze(0);
 
         // println!("ref_hahser state2: {:?}", encrypter.state.words().clone());
 
@@ -118,9 +118,9 @@ where
                 }
             }
             if inputs.len() == RATE {
-                encrypter.perm_with_input(&inputs);
+                encrypter.update(&inputs);
             } else {
-                encrypter.perm_remain(0);
+                encrypter.squeeze(0);
             }
         }
         // encrypter.perm_with_input(&[]);
@@ -142,8 +142,8 @@ where
 
         let mut message = [F::ZERO; MESSAGE_CAPACITY];
 
-        encrypter.perm_with_input(&vec![]);
-        encrypter.perm_remain(0);
+        encrypter.update(&vec![]);
+        encrypter.squeeze(0);
 
         let mut state_2 = encrypter.state.words().clone();
 
@@ -152,8 +152,8 @@ where
             state_2[(i + 1) % T] = self.cipher[i];
         });
 
-        encrypter.perm_with_input(&mut message);
-        encrypter.perm_remain(0);
+        encrypter.update(&mut message);
+        encrypter.squeeze(0);
 
         let state_3 = encrypter.state.words().clone();
 

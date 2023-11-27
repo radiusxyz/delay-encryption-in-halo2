@@ -248,15 +248,8 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 hasher.update(&[e.clone()]);
                 let mut h_out: Vec<AssignedCell<F, F>> = vec![];
                 let h_assiged = hasher.hash(ctx)?;
-                h_out.push(h_assiged.clone());
-                // let expected = main_gate.assign_value(ctx, self.expected)?;
-                let h_value = h_assiged.value().map(|e| *e);
-                // println!("\nhash_output1: {:?}", h_value);
-                hasher.pose_chip.perm_hash(ctx, vec![])?;
-                let h_assiged = hasher.pose_chip.state.0[1].clone();
-                let h_value = h_assiged.value().map(|e| *e);
-                h_out.push(h_assiged.clone());
-                // println!("\nhash_output2: {:?}", h_value);
+                h_out.push(h_assiged[1].clone());
+                h_out.push(h_assiged[2].clone());
                 Ok(h_out)
             },
         )?;

@@ -60,7 +60,7 @@ impl<
         const RATE: usize,
     > HasherChip<F, T, RATE, R_F, R_P>
 {
-    pub fn hash(&mut self, ctx: &mut RegionCtx<'_, F>) -> Result<AssignedValue<F>, Error> {
+    pub fn hash(&mut self, ctx: &mut RegionCtx<'_, F>) -> Result<[halo2_proofs::circuit::AssignedCell<F, F>; T], Error> {
         // Get elements to be hashed
         let input_elements = self.pose_chip.absorbing.clone();
         // Flush the input que
@@ -78,7 +78,7 @@ impl<
             self.pose_chip.perm_hash(ctx, vec![])?;
         }
 
-        Ok(self.pose_chip.state.0[1].clone())
+        Ok(self.pose_chip.state.0.clone())
     }
 }
 
@@ -88,6 +88,7 @@ mod tests {
     use crate::{poseidon, PoseidonChip};
     use ff::FromUniformBytes;
     use halo2::halo2curves::ff::{Field, PrimeField};
+    use halo2_proofs::circuit::AssignedCell;
     use halo2wrong::halo2::circuit::{Layouter, SimpleFloorPlanner, Value};
     use halo2wrong::halo2::plonk::Error;
     use halo2wrong::halo2::plonk::{Circuit, ConstraintSystem};
@@ -115,7 +116,7 @@ mod tests {
         spec: Spec<F, T, RATE>,
         n: usize,
         inputs: Value<Vec<F>>,
-        expected: Value<F>,
+        expected: Vec<F>,
     }
 
     impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Circuit<F>
@@ -150,7 +151,10 @@ mod tests {
                     let offset = 0;
                     let ctx = &mut RegionCtx::new(region, offset);
 
-                    let expected_result = main_gate.assign_value(ctx, self.expected)?;
+                    let mut expected_result: Vec<AssignedCell<F, F>> = vec![];
+                    for i in 0..RATE{
+                        expected_result.push(main_gate.assign_value(ctx, Value::known(self.expected[i]))?);
+                    }
 
                     let mut pos_hash_chip =
                         HasherChip::<F, T, RATE, FULL_ROUND, PARTIAL_ROUND>::new(
@@ -176,8 +180,9 @@ mod tests {
 
                     println!("hash_output: {:?}", hash_output);
                     println!("expected hash_output: {:?}\n", self.expected);
-                    main_gate.assert_equal(ctx, &hash_output, &expected_result)?;
-
+                    for i in 0..RATE{
+                        main_gate.assert_equal(ctx, &hash_output[T-RATE+i], &expected_result[i])?;
+                    }
                     Ok(())
                 },
             )?;
@@ -190,6 +195,8 @@ mod tests {
     fn test_example_hash() {
         use halo2wrong::curves::bn256::Fr;
         let number_of_inputs = 4;
+        const T: usize = 5;
+        const RATE: usize = 4;
 
         println!("{:?}", number_of_inputs);
         let mut ref_hasher = Poseidon::<Fr, 5, 4>::new_hash(8, 57);
@@ -202,8 +209,9 @@ mod tests {
 
         println!("ref_hahser state0: {:?}", ref_hasher.state.words().clone());
 
-        ref_hasher.perm_with_input(&inputs[..]);
-        let expected = ref_hasher.perm_remain(1);
+        ref_hasher.update(&inputs[..]);
+        let expected = ref_hasher.squeeze(1);
+        let expected_out: Vec<_> = (T-RATE..T).map(|i| expected[i].clone()).collect();
 
         println!("ref_hahser state1: {:?}", ref_hasher.state.words().clone());
 
@@ -211,7 +219,7 @@ mod tests {
             spec: spec.clone(),
             n: number_of_inputs,
             inputs: Value::known(inputs),
-            expected: Value::known(expected),
+            expected: expected_out,
         };
         let instance = vec![vec![]];
         mock_prover_verify(&circuit, instance);
