@@ -60,7 +60,10 @@ impl<
         const RATE: usize,
     > HasherChip<F, T, RATE, R_F, R_P>
 {
-    pub fn hash(&mut self, ctx: &mut RegionCtx<'_, F>) -> Result<[halo2_proofs::circuit::AssignedCell<F, F>; T], Error> {
+    pub fn hash(
+        &mut self,
+        ctx: &mut RegionCtx<'_, F>,
+    ) -> Result<[halo2_proofs::circuit::AssignedCell<F, F>; T], Error> {
         // Get elements to be hashed
         let input_elements = self.pose_chip.absorbing.clone();
         // Flush the input que
@@ -152,8 +155,9 @@ mod tests {
                     let ctx = &mut RegionCtx::new(region, offset);
 
                     let mut expected_result: Vec<AssignedCell<F, F>> = vec![];
-                    for i in 0..RATE{
-                        expected_result.push(main_gate.assign_value(ctx, Value::known(self.expected[i]))?);
+                    for i in 0..RATE {
+                        expected_result
+                            .push(main_gate.assign_value(ctx, Value::known(self.expected[i]))?);
                     }
 
                     let mut pos_hash_chip =
@@ -180,8 +184,12 @@ mod tests {
 
                     println!("hash_output: {:?}", hash_output);
                     println!("expected hash_output: {:?}\n", self.expected);
-                    for i in 0..RATE{
-                        main_gate.assert_equal(ctx, &hash_output[T-RATE+i], &expected_result[i])?;
+                    for i in 0..RATE {
+                        main_gate.assert_equal(
+                            ctx,
+                            &hash_output[T - RATE + i],
+                            &expected_result[i],
+                        )?;
                     }
                     Ok(())
                 },
@@ -211,7 +219,7 @@ mod tests {
 
         ref_hasher.update(&inputs[..]);
         let expected = ref_hasher.squeeze(1);
-        let expected_out: Vec<_> = (T-RATE..T).map(|i| expected[i].clone()).collect();
+        let expected_out: Vec<_> = (T - RATE..T).map(|i| expected[i].clone()).collect();
 
         println!("ref_hahser state1: {:?}", ref_hasher.state.words().clone());
 

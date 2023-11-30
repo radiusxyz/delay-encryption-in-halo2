@@ -25,8 +25,8 @@ use halo2wrong::{
     RegionCtx,
 };
 use maingate::{
-    decompose_big, mock_prover_verify, MainGate, MainGateConfig, MainGateInstructions, RangeChip,
-    RangeConfig, RangeInstructions, big_to_fe,
+    big_to_fe, decompose_big, mock_prover_verify, MainGate, MainGateConfig, MainGateInstructions,
+    RangeChip, RangeConfig, RangeInstructions,
 };
 use num_bigint::{BigUint, RandomBits};
 
@@ -52,16 +52,6 @@ struct DelayEncChip<F: PrimeField + ff::FromUniformBytes<64>, const T: usize, co
 impl<F: PrimeField + ff::FromUniformBytes<64>, const T: usize, const RATE: usize>
     DelayEncChip<F, T, RATE>
 {
-    // // DelayEncChip::<F, T, RATE>::new_hash(ctx, &self.spec, &config.hash_config)?;
-    // pub fn new(config: DelayEncCircuitConfig, ctx: &mut RegionCtx<'_, F>, bits_len: usize, exp_limb_bits: usize, spec: &Spec<F, T, RATE>, ) -> RSAChip<F> {
-    //     RSAChip {
-    //         config,
-    //         bits_len,
-    //         exp_limb_bits,
-    //         _f: PhantomData,
-    //     }
-    // }
-
     pub fn new_rsa(config: RSAConfig, bits_len: usize, exp_limb_bits: usize) -> RSAChip<F> {
         RSAChip {
             config,
@@ -146,11 +136,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
 
     fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
         let maingate_config = MainGate::<F>::configure(meta);
-        // let enc_config = MainGate::<F>::configure(meta);
-        // let hash_config = MainGate::<F>::configure(meta);
 
-        // rsa config
-        // let rsa_gate_config = MainGate::<F>::configure(meta);
         let rsa_gate_config = maingate_config.clone();
         let (composition_bit_lens, overflow_bit_lens) =
             RSAChip::<F>::compute_range_lens(Self::BITS_LEN / Self::LIMB_WIDTH);
@@ -214,7 +200,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                     bigint_chip.assign_constant_fresh(ctx, valid_powed_var_biguint.clone())?;
                 bigint_chip.assert_equal_fresh(ctx, &powed_var, &valid_powed_var)?;
 
-                println!("RSA RESULT: {:#6x}\n", valid_powed_var_biguint);
+                // println!("RSA RESULT: {:#6x}\n", valid_powed_var_biguint);
                 Ok(valid_powed_var)
             },
         )?;
@@ -229,13 +215,32 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 let ctx = &mut RegionCtx::new(region, offset);
                 let mut hasher =
                     DelayEncChip::<F, T, RATE>::new_hash(ctx, &self.spec, &config.hash_config)?;
-                let base1 = main_gate_chip.assign_constant(ctx, big_to_fe(BigUint::from(2_u64.pow((16 as u64).try_into().unwrap()))))?;
-                let base2 = main_gate_chip.assign_constant(ctx, big_to_fe(BigUint::from(2_u64.pow((32 as u64).try_into().unwrap()))))?;
-                for i in 0..rsa_output.num_limbs()/3 {
+                let base1 = main_gate_chip.assign_constant(
+                    ctx,
+                    big_to_fe(BigUint::from(
+                        2_u128.pow((Self::LIMB_WIDTH as u128).try_into().unwrap()),
+                    )),
+                )?;
+                let base2 = main_gate_chip.mul(ctx, &base1, &base1)?;
+                for i in 0..rsa_output.num_limbs() / 3 {
+                    // println!("limb({:?}) = {:?}", 3 * i, rsa_output.limb(3 * i));
+                    // println!("limb({:?}) = {:?}", 3 * i + 1, rsa_output.limb(3 * i + 1));
+                    // println!("limb({:?}) = {:?}", 3 * i + 2, rsa_output.limb(3 * i + 2));
+
                     let mut a_poly = rsa_output.limb(3 * i);
-                    a_poly = main_gate_chip.mul_add(ctx, &rsa_output.limb(3 * i + 1), &base1, &a_poly)?;
-                    a_poly = main_gate_chip.mul_add(ctx, &rsa_output.limb(3 * i + 2), &base2, &a_poly)?;
-                    println!("a_ploy value:{:?}", a_poly);
+                    a_poly = main_gate_chip.mul_add(
+                        ctx,
+                        &rsa_output.limb(3 * i + 1),
+                        &base1,
+                        &a_poly,
+                    )?;
+                    a_poly = main_gate_chip.mul_add(
+                        ctx,
+                        &rsa_output.limb(3 * i + 2),
+                        &base2,
+                        &a_poly,
+                    )?;
+                    // println!("a_ploy value:{:?}", a_poly);
                     let e = a_poly;
                     hasher.update(&[e.clone()]);
                 }
@@ -243,7 +248,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 let mut a_poly = rsa_output.limb(30);
 
                 a_poly = main_gate_chip.mul_add(ctx, &rsa_output.limb(31), &base1, &a_poly)?;
-                println!("a_ploy value:{:?}", a_poly);
+                // println!("a_ploy value:{:?}", a_poly);
                 let e = a_poly;
                 hasher.update(&[e.clone()]);
                 let mut h_out: Vec<AssignedCell<F, F>> = vec![];
@@ -283,8 +288,8 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 let _ = main_gate_chip.assert_equal(ctx, &enc.pose_chip.state.0[2], &h_out[0])?;
                 let _ = main_gate_chip.assert_equal(ctx, &enc.pose_chip.state.0[3], &h_out[1])?;
                 // check the assigned initial state
-                println!("\nzk_state: {:?}", enc.pose_chip.state.0);
-                println!("\npose_key: {:?}", pose_key);
+                // println!("\nzk_state: {:?}", enc.pose_chip.state.0);
+                // println!("\npose_key: {:?}", pose_key);
                 // permute before state message addtion
                 enc.pose_chip.permutation(ctx, vec![])?;
                 // check the permuted state
@@ -298,8 +303,8 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 }
                 // add the input to the currentn state and output encrypted result
                 let cipher_text = enc.absorb_and_relese(ctx)?;
-                println!("\ncipher: {:?}", cipher_text);
-                println!("\nexpected cipher: {:?}\n", expected_result);
+                // println!("\ncipher: {:?}", cipher_text);
+                // println!("\nexpected cipher: {:?}\n", expected_result);
                 // println!("cipher len: {:?}", cipher_text.len());
                 // constrain with encryption result
                 // println!("check out equality..");
@@ -314,7 +319,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
 }
 
 #[test]
-fn test_de_circuit() {
+fn test_delay_enc_circuit() {
     use halo2wrong::curves::bn256::Fr;
     use rand::{thread_rng, Rng};
     // FromUniformBytes : Trait for constructing a PrimeField element from a fixed-length uniform byte array.
@@ -342,8 +347,6 @@ fn test_de_circuit() {
         spec: spec.clone(),
         num_input: MESSAGE_CAPACITY,
         message: inputs,
-        // key: key,
-        // expected: ref_cipher.to_vec(),
     };
 
     let public_inputs = vec![vec![]];

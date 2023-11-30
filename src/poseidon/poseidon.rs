@@ -54,7 +54,7 @@ impl<F: FromUniformBytes<64>, const T: usize, const RATE: usize> Poseidon<F, T, 
 
     /// Results a single element by absorbing already added inputs
     /// if set h_flag = 1, the add additional padding F::ONE
-    pub fn squeeze(&mut self, h_flag: usize) -> [F;T] {
+    pub fn squeeze(&mut self, h_flag: usize) -> [F; T] {
         let mut last_chunk = self.absorbing.clone();
         {
             // Expect padding offset to be in [0, RATE)
