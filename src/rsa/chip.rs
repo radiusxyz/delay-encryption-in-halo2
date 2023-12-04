@@ -41,12 +41,12 @@ impl RSAConfig {
 #[derive(Debug, Clone)]
 pub struct RSAChip<F: PrimeField> {
     /// Chip configuration.
-    config: RSAConfig,
+    pub(crate) config: RSAConfig,
     /// The default bit length of [`Fresh`] type integers in this chip.
-    bits_len: usize,
+    pub(crate) bits_len: usize,
     /// The width of each limb when the exponent is decomposed.
-    exp_limb_bits: usize,
-    _f: PhantomData<F>,
+    pub(crate) exp_limb_bits: usize,
+    pub(crate) _f: PhantomData<F>,
 }
 
 impl<F: PrimeField> RSAInstructions<F> for RSAChip<F> {

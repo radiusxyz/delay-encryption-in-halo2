@@ -1,5 +1,5 @@
 use num_bigint::BigUint;
-pub(crate) fn big_pow_mod(a: &BigUint, b: &BigUint, n: &BigUint) -> BigUint {
+pub fn big_pow_mod(a: &BigUint, b: &BigUint, n: &BigUint) -> BigUint {
     let one = BigUint::from(1usize);
     let two = BigUint::from(2usize);
     if b == &BigUint::default() {
