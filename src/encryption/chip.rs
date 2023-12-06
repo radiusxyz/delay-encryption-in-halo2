@@ -221,7 +221,7 @@ fn test_pos_enc() {
 
         //== Poseidon Encryption ==//
 
-        let ref_cipher = ref_pos_enc.encrypt(&inputs, &F::ONE);
+        let ref_cipher = ref_pos_enc.encrypt(&inputs, &F::ONE).unwrap();
 
         //== Circuit ==//
 
