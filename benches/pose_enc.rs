@@ -72,7 +72,7 @@ fn bench_poseidon<const T: usize, const RATE: usize, const K: u32>(name: &str, c
     let mut ref_pos_enc =
         PoseidonCipher::<Fr, FULL_ROUND, PARTIAL_ROUND, T, RATE>::new([key.key0, key.key1]);
 
-    let ref_cipher = ref_pos_enc.encrypt(&inputs, &Fr::ONE);
+    let ref_cipher = ref_pos_enc.encrypt(&inputs, &Fr::ONE).unwrap();
 
     print!("\nmsg length: {:?}\n", MESSAGE_CAPACITY);
 

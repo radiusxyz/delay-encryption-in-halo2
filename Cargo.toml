@@ -46,7 +46,3 @@ harness = false
 [[bench]]
 name = "mod_pow"
 harness = false
-
-[[bench]]
-name = "delay_enc"
-harness = false
