@@ -270,7 +270,7 @@ impl<F: PrimeField + FromUniformBytes<64>, const T: usize, const RATE: usize> Ci
                 // // == Encryption Scheme == //
                 let mut ref_enc =
                     PoseidonCipher::<F, FULL_ROUND, PARTIAL_ROUND, T, RATE>::new(pose_key);
-                let encryption_result = ref_enc.encrypt(&self.message, &F::ONE);
+                let encryption_result = ref_enc.encrypt(&self.message, &F::ONE).unwrap();
                 let mut expected_result = vec![];
                 // assign expected result
                 for result in &encryption_result {
